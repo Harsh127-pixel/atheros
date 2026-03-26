@@ -3,20 +3,32 @@
 import { useState } from 'react';
 import { deployRepo } from './actions/deploy';
 import { Github, Play, Shield, Cloud, CheckCircle2, AlertCircle, Terminal, Loader2 } from 'lucide-react';
+import AetherTerminal from '../components/terminal/AetherTerminal';
+
+import { useAuth } from '../context/AuthContext';
 
 export default function Dashboard() {
+  const { user, loginWithGoogle, logout, getToken, loading } = useAuth();
   const [isPending, setIsPending] = useState(false);
   const [response, setResponse] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!user) {
+      setError("You must be logged in to deploy.");
+      return;
+    }
+    
     setIsPending(true);
     setError(null);
     setResponse(null);
 
     const formData = new FormData(e.currentTarget);
-    const result = await deployRepo(formData);
+    const token = await getToken();
+    
+    // Pass token as a separate argument or in formData
+    const result = await deployRepo(formData, token || '');
 
     setIsPending(false);
 
@@ -25,6 +37,14 @@ export default function Dashboard() {
     } else {
       setResponse(result);
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <Loader2 className="w-12 h-12 text-primary-DEFAULT animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -39,7 +59,30 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center space-x-4">
           <button className="px-4 py-2 glass rounded-lg text-sm transition hover:bg-white/10">Documentation</button>
-          <button className="px-4 py-2 bg-primary-DEFAULT rounded-lg text-sm font-medium hover:bg-primary-dark transition glow">Sign In</button>
+          {user ? (
+            <div className="flex items-center space-x-3">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-medium text-white">{user.displayName}</p>
+                <p className="text-xs text-slate-500">{user.email}</p>
+              </div>
+              {user.photoURL && (
+                <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full border border-primary-DEFAULT" />
+              )}
+              <button 
+                onClick={() => logout()}
+                className="px-4 py-2 bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-700 transition"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => loginWithGoogle()}
+              className="px-4 py-2 bg-primary-DEFAULT rounded-lg text-sm font-medium hover:bg-primary-dark transition glow"
+            >
+              Sign In
+            </button>
+          )}
         </div>
       </header>
 
@@ -155,32 +198,22 @@ export default function Dashboard() {
                     </div>
                  </div>
                  
-                 <div className="bg-black/60 rounded-xl p-4 font-mono text-sm text-slate-300 border border-slate-800 h-64 overflow-y-auto">
-                    <div className="flex items-center space-x-2 text-slate-500 mb-2">
-                       <Terminal className="w-4 h-4" />
-                       <span>AetherOS CI/CD Terminal</span>
-                    </div>
-                    <p className="text-primary-light">[info] Initializing AetherOS engine...</p>
-                    <p className="text-green-400">[info] Connecting to Render API...</p>
-                    <p className="text-green-400">[info] Authorized: Security token validated.</p>
-                    <p>[scan] Running SecScan Plus AI analyzer...</p>
-                    <p className="text-yellow-400">[warn] 2 low-risk dependencies found.</p>
-                    <p>[deploy] Provisioning Render instance...</p>
-                    <p className="animate-pulse">_</p>
+                 <div className="h-80 w-full mb-4">
+                    <AetherTerminal deploymentId={response.deploymentId} />
                  </div>
                </div>
             </div>
           ) : !error && (
-            <div className="glass h-full min-h-[400px] rounded-2xl border-white/5 flex flex-col items-center justify-center text-center p-8 space-y-4">
+            <div className="glass h-full min-h-[460px] rounded-2xl border-white/5 flex flex-col items-center justify-center text-center p-8 space-y-4">
               <div className="relative">
-                <div className="absolute inset-0 bg-primary-DEFAULT blur-2xl opacity-20"></div>
+                <div className="absolute inset-0 bg-primary-DEFAULT blur-3xl opacity-10"></div>
                 <Terminal className="w-16 h-16 text-slate-700 relative z-10" />
               </div>
-              <div>
-                <h3 className="text-xl font-semibold text-slate-400">Deployment Logs</h3>
-                <p className="text-sm text-slate-500 max-w-xs mt-2">
-                  Logs from your secure deployment pipeline will appear here in real-time.
-                </p>
+              <div className="h-64 flex flex-col items-center justify-center">
+                 <h3 className="text-xl font-semibold text-slate-400">Live Log-Room</h3>
+                 <p className="text-sm text-slate-500 max-w-xs mt-2">
+                   Real-time terminal logs from your secure deployment pipeline will stream here.
+                 </p>
               </div>
             </div>
           )}

@@ -14,9 +14,15 @@ model User {
   id           String       @id @default(uuid())
   email        String       @unique
   name         String?
+  role         Role         @default(USER)
   deployments  Deployment[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+}
+
+enum Role {
+  USER
+  ADMIN
 }
 
 model Deployment {
@@ -25,7 +31,7 @@ model Deployment {
   status         String   @default("PENDING") // PENDING, IN_PROGRESS, SUCCESS, FAILED
   cloudProvider  String?  // AWS, VERCEL, RENDER, AZURE
   securityScore  Int?     @default(0)
-  logs           String?  @db.Text
+  buildLogs      String?  @db.Text
   userId         String?
   user           User?    @relation(fields: [userId], references: [id])
   createdAt      DateTime @default(now())

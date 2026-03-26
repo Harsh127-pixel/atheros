@@ -1,6 +1,6 @@
 'use server';
 
-export async function deployRepo(formData: FormData) {
+export async function deployRepo(formData: FormData, token: string) {
   const repoUrl = formData.get('repoUrl') as string;
   const cloudProvider = formData.get('cloudProvider') as string || 'RENDER';
 
@@ -9,14 +9,13 @@ export async function deployRepo(formData: FormData) {
   }
 
   const backendUrl = process.env.RENDER_BACKEND_URL || 'http://localhost:4000';
-  const apiKey = process.env.RENDER_API_KEY;
 
   try {
     const response = await fetch(`${backendUrl}/api/deploy`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
         repoUrl,

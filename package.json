@@ -5,10 +5,13 @@
   "scripts": {
     "backend:build": "npm run build -w backend",
     "backend:start": "npm start -w backend",
+    "backend:dev": "npm run dev -w backend",
     "frontend:build": "npm run build -w frontend",
     "frontend:start": "npm start -w frontend",
+    "frontend:dev": "npm run dev -w frontend",
     "build": "npm install && npm run backend:build",
-    "start": "npm run backend:start"
+    "start": "npm run backend:start",
+    "dev": "npm run frontend:dev"
   },
   "workspaces": [
     "backend",
