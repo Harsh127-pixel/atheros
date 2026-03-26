@@ -91,12 +91,23 @@ app.post('/api/scan', async (req, res) => {
 app.post('/api/deploy', async (req, res) => {
   const { repoUrl, cloudProvider } = req.body;
 
-  if (!repoUrl) {
-    logger.warn('Deployment failed: Missing GitHub URL');
-    return res.status(400).json({ error: 'GitHub URL is required' });
-  }
-
   try {
+    // Check Global System Settings
+    const settings = await prisma.systemSettings.findFirst();
+    if (settings) {
+      if (settings.maintenanceMode && req.user.role !== 'ADMIN') {
+        return res.status(503).json({ error: 'System is currently in Maintenance Mode. Please try again later.' });
+      }
+      if (!settings.freeTierEnabled && req.user.upgradeLevel === 0 && req.user.role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Free tier deployments are currently disabled. Please upgrade your plan.' });
+      }
+    }
+
+    if (!repoUrl) {
+      logger.warn('Deployment failed: Missing GitHub URL');
+      return res.status(400).json({ error: 'GitHub URL is required' });
+    }
+
     logger.info('Initializing deployment and security audit for repo', { repoUrl });
 
     // 1. First, create a temporary directory to clone and scan (The "Scanner" & "Shield")
@@ -176,7 +187,7 @@ app.post('/api/deploy', async (req, res) => {
       logEmitter.emit('log', { deploymentId: deployment.id, message: '[aether] Deployment live on Render.' });
     })();
 
-  } catch (error) {
+    } catch (error) {
     logger.error('Deployment creation failed', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
@@ -219,6 +230,84 @@ app.get('/api/deployments/:id', async (req, res) => {
 // Health Check
 app.get('/health', (req, res) => {
   res.json({ status: 'AetherOS Engine: Operational' });
+});
+
+// --- Admin Endpoints (RBAC Protection) ---
+const { roleMiddleware } = require('./middleware/authMiddleware');
+
+// Get all system settings
+app.get('/api/admin/settings', roleMiddleware(['ADMIN']), async (req, res) => {
+  try {
+    let settings = await prisma.systemSettings.findFirst();
+    if (!settings) {
+      settings = await prisma.systemSettings.create({ data: {} });
+    }
+    res.json(settings);
+  } catch (error) {
+    logger.error('Admin Fetch Settings Error', error);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+// Update system settings
+app.post('/api/admin/settings', roleMiddleware(['ADMIN']), async (req, res) => {
+  const { maintenanceMode, freeTierEnabled, subscriptionModelOn } = req.body;
+  try {
+    const settings = await prisma.systemSettings.upsert({
+      where: { id: 'global-settings' },
+      update: { maintenanceMode, freeTierEnabled, subscriptionModelOn },
+      create: { maintenanceMode, freeTierEnabled, subscriptionModelOn }
+    });
+    res.json(settings);
+  } catch (error) {
+    logger.error('Admin Update Settings Error', error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// List all users for management
+app.get('/api/admin/users', roleMiddleware(['ADMIN']), async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(users);
+  } catch (error) {
+    logger.error('Admin List Users Error', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Ban/Unban user
+app.post('/api/admin/users/:id/ban', roleMiddleware(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { isBanned } = req.body;
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data: { isBanned }
+    });
+    res.json(user);
+  } catch (error) {
+    logger.error('Admin Ban User Error', error);
+    res.status(500).json({ error: 'Failed to update user status' });
+  }
+});
+
+// Upgrade/Downgrade user level
+app.post('/api/admin/users/:id/upgrade', roleMiddleware(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { level } = req.body; // 0, 1, 2
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data: { upgradeLevel: parseInt(level) }
+    });
+    res.json(user);
+  } catch (error) {
+    logger.error('Admin Upgrade User Error', error);
+    res.status(500).json({ error: 'Failed to upgrade user' });
+  }
 });
 
 app.listen(PORT, () => {

@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { deployRepo } from './actions/deploy';
-import { Github, Play, Shield, Cloud, CheckCircle2, AlertCircle, Terminal, Loader2 } from 'lucide-react';
+import { Github, Play, Shield, Cloud, CheckCircle2, AlertCircle, Terminal, Loader2, Lock } from 'lucide-react';
 import AetherTerminal from '../components/terminal/AetherTerminal';
-
+import Link from 'next/link';
 import { useAuth } from '../context/AuthContext';
 
 export default function Dashboard() {
-  const { user, loginWithGoogle, logout, getToken, loading } = useAuth();
+  const { user, loginWithGoogle, logout, getToken, loading, isAdmin } = useAuth();
   const [isPending, setIsPending] = useState(false);
   const [response, setResponse] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,18 +55,26 @@ export default function Dashboard() {
           <div className="w-10 h-10 bg-primary-DEFAULT rounded-xl flex items-center justify-center glow">
             <Shield className="text-white w-6 h-6" />
           </div>
-          <span className="text-2xl font-bold tracking-tight gradient-text">AetherOS</span>
+          <span className="text-2xl font-bold tracking-tight text-white leading-none">AetherOS</span>
         </div>
         <div className="flex items-center space-x-4">
+          {isAdmin && (
+            <Link href="/admin" className="flex items-center space-x-2 px-4 py-2 border border-primary-DEFAULT/30 bg-primary-DEFAULT/5 text-primary-light rounded-lg text-sm hover:bg-primary-DEFAULT/10 transition">
+              <Lock className="w-4 h-4" />
+              <span>God Mode</span>
+            </Link>
+          )}
           <button className="px-4 py-2 glass rounded-lg text-sm transition hover:bg-white/10">Documentation</button>
           {user ? (
             <div className="flex items-center space-x-3">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-white">{user.displayName}</p>
+                <p className="text-sm font-medium text-white">{user.displayName || user.email?.split('@')[0]}</p>
                 <p className="text-xs text-slate-500">{user.email}</p>
               </div>
-              {user.photoURL && (
+              {user.photoURL ? (
                 <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full border border-primary-DEFAULT" />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold">{user.email?.[0].toUpperCase()}</div>
               )}
               <button 
                 onClick={() => logout()}
@@ -85,7 +93,6 @@ export default function Dashboard() {
           )}
         </div>
       </header>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Left Column: Input Form */}
         <section className="space-y-8 animate-in fade-in slide-in-from-left duration-700">
@@ -220,7 +227,6 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* Footer / MCP Status */}
       <footer className="mt-24 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center opacity-70">
         <p className="text-sm text-slate-500">© 2026 AetherOS Technologies. All rights reserved.</p>
         <div className="flex items-center space-x-6 mt-4 md:mt-0">

@@ -26,9 +26,13 @@ const authMiddleware = async (req, res, next) => {
         data: {
           email: decodedToken.email,
           name: decodedToken.name || decodedToken.email.split('@')[0],
-          role: 'USER', // Default role for new users
+          role: decodedToken.email === 'admin@aetheros.com' ? 'ADMIN' : 'USER',
         }
       });
+    }
+
+    if (user.isBanned) {
+      return res.status(403).json({ message: 'Forbidden: Your account has been banned' });
     }
 
     // Attach user to req.user
