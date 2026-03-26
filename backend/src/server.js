@@ -329,6 +329,9 @@ app.post('/api/admin/settings', roleMiddleware(['ADMIN']), async (req, res) => {
   }
 });
 
+// Super Admin Guard Helper
+const isSuperAdmin = (email) => email === 'admin@gaurangjadoun.in';
+
 // List all users for management
 app.get('/api/admin/users', roleMiddleware(['ADMIN']), async (req, res) => {
   try {
@@ -342,8 +345,32 @@ app.get('/api/admin/users', roleMiddleware(['ADMIN']), async (req, res) => {
   }
 });
 
-// Ban/Unban user
+// Update user role (Super Admin Only: Add/Remove/Disable Admins)
+app.post('/api/admin/users/:id/role', roleMiddleware(['ADMIN']), async (req, res) => {
+  if (!isSuperAdmin(req.user.email)) {
+    return res.status(403).json({ error: 'Forbidden: Only the Root Administrator can modify roles.' });
+  }
+
+  const { id } = req.params;
+  const { role } = req.body; // 'USER', 'ADMIN'
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data: { role }
+    });
+    res.json(user);
+  } catch (error) {
+    logger.error('Admin Change Role Error', error);
+    res.status(500).json({ error: 'Failed to update user role' });
+  }
+});
+
+// Ban/Unban user (Super Admin Only)
 app.post('/api/admin/users/:id/ban', roleMiddleware(['ADMIN']), async (req, res) => {
+  if (!isSuperAdmin(req.user.email)) {
+    return res.status(403).json({ error: 'Forbidden: Only the Root Administrator can ban or disable users.' });
+  }
+
   const { id } = req.params;
   const { isBanned } = req.body;
   try {
@@ -355,6 +382,22 @@ app.post('/api/admin/users/:id/ban', roleMiddleware(['ADMIN']), async (req, res)
   } catch (error) {
     logger.error('Admin Ban User Error', error);
     res.status(500).json({ error: 'Failed to update user status' });
+  }
+});
+
+// Remove User (Super Admin Only)
+app.delete('/api/admin/users/:id', roleMiddleware(['ADMIN']), async (req, res) => {
+  if (!isSuperAdmin(req.user.email)) {
+    return res.status(403).json({ error: 'Forbidden: Only the Root Administrator can delete users.' });
+  }
+
+  const { id } = req.params;
+  try {
+    await prisma.user.delete({ where: { id } });
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    logger.error('Admin Delete User Error', error);
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 

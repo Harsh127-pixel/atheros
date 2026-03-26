@@ -97,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return await getIdToken(auth.currentUser);
   };
 
-  const isAdmin = user?.role === 'ADMIN' || user?.email === 'admin@aetheros.com';
+  const isAdmin = user?.role === 'ADMIN' || user?.email === 'admin@gaurangjadoun.in';
 
   return (
     <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout, getToken, isAdmin, settings }}>

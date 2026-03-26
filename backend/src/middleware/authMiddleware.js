@@ -26,7 +26,7 @@ const authMiddleware = async (req, res, next) => {
         data: {
           email: decodedToken.email,
           name: decodedToken.name || decodedToken.email.split('@')[0],
-          role: decodedToken.email === 'admin@aetheros.com' ? 'ADMIN' : 'USER',
+          role: decodedToken.email === 'admin@gaurangjadoun.in' ? 'ADMIN' : 'USER',
         }
       });
     }
