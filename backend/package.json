@@ -6,9 +6,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "build": "npx prisma generate",
-    "db:migrate": "npx prisma migrate deploy",
-    "postinstall": "prisma generate"
+    "build": "npx prisma@6.2.1 generate",
+    "db:migrate": "npx prisma@6.2.1 migrate deploy",
+    "postinstall": "npx prisma@6.2.1 generate"
   },
   "dependencies": {
     "express": "^4.21.2",
