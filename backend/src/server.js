@@ -70,7 +70,6 @@ app.get('/api/deployments/:id/logs', async (req, res) => {
   });
 });
 
-const { authMiddleware } = require('./middleware/authMiddleware');
 const { maintenanceMiddleware } = require('./middleware/maintenanceMiddleware');
 const Razorpay = require('razorpay');
 
