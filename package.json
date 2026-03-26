@@ -6,6 +6,7 @@
     "backend:build": "npm run build -w backend",
     "backend:start": "npm start -w backend",
     "frontend:build": "npm run build -w frontend",
+    "frontend:start": "npm start -w frontend",
     "build": "npm install && npm run backend:build",
     "start": "npm run backend:start"
   },

@@ -5,7 +5,7 @@ Welcome to the future of cloud-native deployments. AetherOS connects your codeba
 ## Project Structure
 
 - `/frontend`: Next.js 15 (App Router) - Deployed on Vercel.
-- `/backend`: Express.js + Prisma (PostgreSQL) - Deployed on Render.
+- `/backend`: [AetherOS Engine (Live)](https://atheros.onrender.com) - Deployed on Render.
 - `/mcp-tools`: Placeholder for Model Context Protocol server logic.
 
 ## Getting Started
