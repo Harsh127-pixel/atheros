@@ -85,6 +85,37 @@ app.post('/api/deploy', async (req, res) => {
   }
 });
 
+// List all deployments
+app.get('/api/deployments', async (req, res) => {
+  try {
+    const deployments = await prisma.deployment.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    res.json(deployments);
+  } catch (error) {
+    logger.error('Failed to fetch deployments', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Get deployment by ID
+app.get('/api/deployments/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deployment = await prisma.deployment.findUnique({
+      where: { id }
+    });
+    if (!deployment) {
+      return res.status(404).json({ error: 'Deployment not found' });
+    }
+    res.json(deployment);
+  } catch (error) {
+    logger.error('Failed to fetch deployment details', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // Health Check
 app.get('/health', (req, res) => {
   res.json({ status: 'AetherOS Engine: Operational' });
