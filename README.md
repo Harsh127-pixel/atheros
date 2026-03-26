@@ -31,10 +31,24 @@ npm install
 npm run dev
 ```
 
-## Security & Auth
-This platform uses a shared secret API key for secure communication between the frontend (Server Actions) and the Render API.
-- `RENDER_API_KEY` must match on both services.
-- `VERCEL_URL` should be added to the backend's CORS configuration.
+## Security & Auth (v2.0: Firebase Identity)
+AetherOS now uses Firebase Authentication for secure user identities and RBAC (Role-Based Access Control).
+- **Frontend**: Integrates Firebase Client SDK for Google Social Login and Email/Password.
+- **Backend**: Uses `firebase-admin` middleware to verify Bearer tokens on every request.
+- **RBAC**: Users are synced to the Prisma `User` table. Default role is `USER`. `ADMIN` role can view all deployments.
+- **Real-Time Logs**: Secured via JWT tokens passed as query parameters for `EventSource`.
+
+### Environment Variables Required:
+**Backend (`.env`)**:
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_CLIENT_EMAIL`
+- `FIREBASE_PRIVATE_KEY`
+
+**Frontend (`.env.local`)**:
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- ... (see `.env.local` for more)
 
 ## MCP Foundation
 Looking to extend with AI tools? The `/mcp-tools` directory is primed for your custom Model Context Protocol servers.

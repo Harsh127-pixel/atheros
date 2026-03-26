@@ -15,9 +15,19 @@ model User {
   email        String       @unique
   name         String?
   role         Role         @default(USER)
+  isBanned     Boolean      @default(false)
+  upgradeLevel Int          @default(0) // 0: Free, 1: Pro, 2: Enterprise
   deployments  Deployment[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+}
+
+model SystemSettings {
+  id                     String   @id @default("global-settings")
+  maintenanceMode        Boolean  @default(false)
+  freeTierEnabled        Boolean  @default(true)
+  subscriptionModelOn    Boolean  @default(true)
+  updatedAt              DateTime @updatedAt
 }
 
 enum Role {

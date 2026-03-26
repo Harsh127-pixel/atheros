@@ -5,11 +5,14 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 
+import { useAuth } from '../../context/AuthContext';
+
 interface AetherTerminalProps {
   deploymentId: string | null;
 }
 
 export default function AetherTerminal({ deploymentId }: AetherTerminalProps) {
+  const { getToken } = useAuth();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
 
@@ -48,28 +51,37 @@ export default function AetherTerminal({ deploymentId }: AetherTerminalProps) {
   useEffect(() => {
     if (!deploymentId || !xtermRef.current) return;
 
+    let eventSource: EventSource | null = null;
     const term = xtermRef.current;
-    term.clear();
-    term.writeln(`\x1b[1;36m[info]\x1b[0m Connected to Log-Room for deployment: ${deploymentId}`);
     
-    // Connect to SSE Log-Room
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
-    const eventSource = new EventSource(`${backendUrl}/api/deployments/${deploymentId}/logs`);
+    const connect = async () => {
+      const token = await getToken();
+      if (!token) return;
 
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.message) {
-        term.writeln(`\x1b[1;32m>\x1b[0m ${data.message}`);
-      }
+      term.clear();
+      term.writeln(`\x1b[1;36m[info]\x1b[0m Connected to Log-Room for deployment: ${deploymentId}`);
+      
+      // Connect to SSE Log-Room
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+      eventSource = new EventSource(`${backendUrl}/api/deployments/${deploymentId}/logs?token=${token}`);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.message) {
+          term.writeln(`\x1b[1;32m>\x1b[0m ${data.message}`);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('SSE Error:', err);
+        eventSource?.close();
+      };
     };
 
-    eventSource.onerror = (err) => {
-      console.error('SSE Error:', err);
-      eventSource.close();
-    };
+    connect();
 
     return () => {
-      eventSource.close();
+      eventSource?.close();
     };
   }, [deploymentId]);
 
