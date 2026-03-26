@@ -3,9 +3,10 @@ services:
   - type: web
     name: aetheros-api
     runtime: node
-    rootDir: backend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    # Full repository root for monorepo context
+    rootDir: .
+    buildCommand: npm install && npm run build -w backend
+    startCommand: npm start -w backend
     envVars:
       - key: NODE_ENV
         value: production

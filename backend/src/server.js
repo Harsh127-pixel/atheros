@@ -70,8 +70,21 @@ app.get('/api/deployments/:id/logs', async (req, res) => {
   });
 });
 
+const { authMiddleware } = require('./middleware/authMiddleware');
+const { maintenanceMiddleware } = require('./middleware/maintenanceMiddleware');
+const Razorpay = require('razorpay');
+
+// Razorpay Initialization
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'rzp_test_placeholder_secret'
+});
+
 // Middleware for Firebase Auth validation (everything after this is protected)
 app.use('/api/*', authMiddleware);
+
+// Global Maintenance Guard (Checks for req.user for admin role)
+app.use('/api/*', maintenanceMiddleware);
 
 // Intelligent Repository Analyzer
 app.post('/api/scan', async (req, res) => {
@@ -224,6 +237,58 @@ app.get('/api/deployments/:id', async (req, res) => {
   } catch (error) {
     logger.error('Failed to fetch deployment details', error);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Get current user and system settings
+app.get('/api/me', async (req, res) => {
+  try {
+    const settings = await prisma.systemSettings.findFirst();
+    res.json({ user: req.user, settings });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// Create Payment Order
+app.post('/api/payments/order', async (req, res) => {
+  const { amount, planId } = req.body;
+  try {
+    const options = {
+      amount: amount * 100, // amount in smallest currency unit (paise)
+      currency: "INR",
+      receipt: `receipt_${Date.now()}`,
+    };
+    const order = await razorpay.orders.create(options);
+    res.json(order);
+  } catch (error) {
+    logger.error('Razorpay Order Error', error);
+    res.status(500).json({ error: 'Failed to create payment order' });
+  }
+});
+
+// Verify Payment Signature
+const crypto = require('crypto');
+app.post('/api/payments/verify', async (req, res) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planLevel } = req.body;
+  
+  const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || 'rzp_test_placeholder_secret');
+  hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
+  const generated_signature = hmac.digest('hex');
+
+  if (generated_signature === razorpay_signature) {
+    try {
+      // Upgrade user level in DB
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { upgradeLevel: parseInt(planLevel) }
+      });
+      res.json({ success: true, message: 'Payment verified and plan upgraded' });
+    } catch (e) {
+       res.status(500).json({ error: 'Payment verified but DB upgrade failed' });
+    }
+  } else {
+    res.status(400).json({ error: 'Invalid payment signature' });
   }
 });
 
