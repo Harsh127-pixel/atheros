@@ -16,10 +16,20 @@ const PORT = process.env.PORT || 4000;
 // Security Middleware
 app.use(helmet());
 
-// CORS configuration - allowing the Vercel URL
+const allowedOrigins = process.env.VERCEL_URL ? process.env.VERCEL_URL.split(',') : ['http://localhost:3000'];
+
+// CORS configuration - allowing multiple origins
 app.use(cors({
-  origin: process.env.VERCEL_URL || 'http://localhost:3000',
-  methods: ['GET', 'POST'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
