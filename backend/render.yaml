@@ -1,0 +1,29 @@
+services:
+  # AetherOS API (Backend)
+  - type: web
+    name: aetheros-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aetheros-db
+          property: connectionString
+      - key: RENDER_API_KEY
+        generateValue: true
+      - key: VERCEL_URL
+        value: https://aetheros-frontend.vercel.app # Placeholder
+
+# AetherOS Managed Database (Optional PostgreSQL)
+# You can use Neon.tech as requested, but Render also provides native DBs
+databases:
+  - name: aetheros-db
+    databaseName: aetheros
+    user: admin
+    plan: free
