@@ -11,9 +11,19 @@ const firebaseConfig = {
   measurementId: "G-YMYNR508XH"
 };
 
+import { getAnalytics, isSupported } from 'firebase/analytics';
+
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
-export { auth, googleProvider };
+// Analytics is only for browser
+let analytics: any = null;
+if (typeof window !== 'undefined') {
+  isSupported().then(yes => {
+    if (yes) analytics = getAnalytics(app);
+  });
+}
+
+export { auth, googleProvider, analytics };
