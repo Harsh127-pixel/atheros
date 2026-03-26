@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  name         String?
+  deployments  Deployment[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Deployment {
+  id             String   @id @default(uuid())
+  repoUrl        String
+  status         String   @default("PENDING") // PENDING, IN_PROGRESS, SUCCESS, FAILED
+  cloudProvider  String?  // AWS, VERCEL, RENDER, AZURE
+  securityScore  Int?     @default(0)
+  logs           String?  @db.Text
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
