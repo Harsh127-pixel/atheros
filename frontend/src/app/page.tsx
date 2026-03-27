@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import Pricing from '../components/payment/Pricing';
 
 // Re-mapping icons to lucide-react (correcting accidental 'lucide-center')
-import { Github as GitIcon, Play as PlayIcon, Shield as ShieldIcon, Cloud as CloudIcon, CheckCircle2 as CheckIcon, AlertCircle as AlertIcon, Terminal as TermIcon, Loader2 as LoadIcon, Lock as LockIcon } from 'lucide-react';
+import { Github as GitIcon, Play as PlayIcon, Shield as ShieldIcon, Cloud as CloudIcon, CheckCircle2 as CheckIcon, AlertCircle as AlertIcon, Terminal as TermIcon, Loader2 as LoadIcon, Lock as LockIcon, BrainCircuit as BrainIcon } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, loginWithGoogle, logout, getToken, loading, isAdmin, settings } = useAuth();
@@ -62,6 +62,10 @@ export default function Dashboard() {
           <span className="text-2xl font-bold tracking-tight text-white leading-none">AetherOS</span>
         </div>
         <div className="flex items-center space-x-4">
+          <Link href="/history" className="flex items-center space-x-2 px-4 py-2 hover:bg-white/5 rounded-lg text-sm text-slate-400 transition hover:text-white">
+            <BrainIcon className="w-4 h-4" />
+            <span>AI Reasoning</span>
+          </Link>
           {isAdmin && (
             <Link href="/admin" className="flex items-center space-x-2 px-4 py-2 border border-primary-DEFAULT/30 bg-primary-DEFAULT/5 text-primary-light rounded-lg text-sm hover:bg-primary-DEFAULT/10 transition">
               <LockIcon className="w-4 h-4" />
@@ -204,12 +208,80 @@ export default function Dashboard() {
 
           {response ? (
             <div className="space-y-6 animate-in zoom-in-95 duration-500">
-               <div className="glass p-6 rounded-2xl border-green-500/30">
-                 <div className="flex items-center space-x-3 mb-4">
-                    <CheckIcon className="text-green-500 w-8 h-8" />
-                    <div>
-                      <h3 className="text-xl font-bold">Deploying Environment</h3>
-                      <p className="text-sm text-slate-400">ID: <span className="text-primary-light font-mono">{response.deploymentId}</span></p>
+                 {/* Brain Analysis Card */}
+                 {response.analysis && (
+                   <div className="glass p-6 rounded-2xl border-primary-DEFAULT/30 mb-6 animate-in slide-in-from-top-4 duration-700">
+                     <div className="flex items-center space-x-3 mb-6">
+                       <BrainIcon className="w-8 h-8 text-primary-light" />
+                       <h3 className="text-xl font-bold text-white">AetherOS Brain Analysis</h3>
+                     </div>
+                     
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                       <div className="space-y-1">
+                         <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Project Architecture</p>
+                         <p className="text-sm font-semibold text-white">{response.analysis.isMonorepo ? 'Monorepo Detected' : 'Single Component'}</p>
+                       </div>
+                       <div className="space-y-1">
+                         <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Recommended Cloud</p>
+                         <p className="text-sm font-semibold text-accent-light">{response.analysis.backend?.suggestedProvider || 'Render'}</p>
+                       </div>
+                       <div className="space-y-1">
+                         <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Suggested Plan</p>
+                         <div className="flex items-center space-x-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              response.suggestedPlan === 'Pro' ? 'bg-primary-DEFAULT/20 text-primary-light border border-primary-DEFAULT/30' : 
+                              response.suggestedPlan === 'Enterprise' ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30' : 
+                              'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                            }`}>
+                              {response.suggestedPlan}
+                            </span>
+                         </div>
+                       </div>
+                     </div>
+
+                     <div className="bg-white/5 p-4 rounded-xl mb-6">
+                        <p className="text-xs text-slate-400 leading-relaxed italic border-l-2 border-primary-DEFAULT/50 pl-4">
+                          "{response.analysis.overallRationale}"
+                        </p>
+                     </div>
+
+                     {response.suggestedPlan !== 'Free' && !isPremium && (
+                       <div className="p-4 bg-primary-DEFAULT/10 border border-primary-DEFAULT/20 rounded-xl flex items-center justify-between">
+                         <div className="flex items-center space-x-3">
+                           <AlertIcon className="text-primary-light w-5 h-5" />
+                           <p className="text-xs text-slate-300">Upgrade to <span className="font-bold text-white">{response.suggestedPlan}</span> to unlock advanced infrastructure.</p>
+                         </div>
+                         <button 
+                           onClick={() => {
+                             const pricingEl = document.getElementById('pricing-section');
+                             pricingEl?.scrollIntoView({ behavior: 'smooth' });
+                           }}
+                           className="text-xs font-bold text-primary-light hover:underline"
+                         >
+                           View Plans
+                         </button>
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                 <div className="glass p-6 rounded-2xl border-green-500/30">
+                   <div className="flex items-center space-x-3 mb-4">
+                      <CheckIcon className="text-green-500 w-8 h-8" />
+                      <div>
+                        <h3 className="text-xl font-bold text-white">Deploying Environment</h3>
+                        <p className="text-sm text-slate-400">ID: <span className="text-primary-light font-mono">{response.deploymentId}</span></p>
+                      {response.url && (
+                        <a 
+                          href={response.url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-green-400 hover:text-green-300 transition text-xs flex items-center mt-2 font-mono group"
+                        >
+                          <CheckIcon className="w-3 h-3 mr-2 group-hover:scale-110 transition" />
+                          <span>Open Live Deployment</span>
+                        </a>
+                      )}
                     </div>
                  </div>
                  
@@ -237,7 +309,7 @@ export default function Dashboard() {
 
       {/* Pricing Section (Only if enabled and user needs upgrade) */}
       {settings?.subscriptionModelOn && (!isPremium) && (
-        <section className="mt-24 border-t border-white/5 pt-24 animate-in fade-in slide-in-from-bottom-10 duration-1000">
+        <section id="pricing-section" className="mt-24 border-t border-white/5 pt-24 animate-in fade-in slide-in-from-bottom-10 duration-1000">
            <div className="text-center mb-16">
              <h2 className="text-4xl font-extrabold text-white mb-4 tracking-tight">Elevate Your <span className="gradient-text">Security Architecture.</span></h2>
              <p className="text-slate-400 max-w-lg mx-auto">

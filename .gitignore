@@ -4,9 +4,9 @@ node_modules/
 .eslintcache
 
 # Env
-.env
-.env.local
-.env.production
+#.env
+#.env.local
+#.env.production
 
 # Next.js
 .next/

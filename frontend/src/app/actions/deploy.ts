@@ -8,7 +8,8 @@ export async function deployRepo(formData: FormData, token: string) {
     return { error: 'GitHub repository URL is required' };
   }
 
-  const backendUrl = process.env.RENDER_BACKEND_URL || 'http://localhost:4000';
+  const backendUrl = process.env.RENDER_BACKEND_URL;
+  if (!backendUrl) throw new Error('RENDER_BACKEND_URL not configured');
 
   try {
     const response = await fetch(`${backendUrl}/api/deploy`, {

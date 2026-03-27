@@ -6,7 +6,13 @@ const logger = require('./utils/logger');
 const { authMiddleware } = require('./middleware/authMiddleware');
 const { PrismaClient } = require('@prisma/client');
 const { analyzeRepo } = require('./services/repoAnalyzer');
+const { performSecurityAudit } = require('./services/securityAudit');
+const { runAutonomousDeployment } = require('./services/aetherAgent');
 const EventEmitter = require('events');
+const temp = require('temp').track();
+const simpleGit = require('simple-git');
+const fs = require('fs-extra');
+const crypto = require('crypto');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -14,21 +20,14 @@ const logEmitter = new EventEmitter();
 const PORT = process.env.PORT || 4000;
 
 // Security Middleware
-app.use(helmet());
-
-const allowedOrigins = process.env.VERCEL_URL ? process.env.VERCEL_URL.split(',') : ['http://localhost:3000'];
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  crossOriginEmbedderPolicy: false, // Often needed for Third-party scripts like Razorpay
+}));
 
 // CORS configuration - allowing multiple origins
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Allow all origins during local dev to prevent extension blocks
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -89,6 +88,68 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET || 'rzp_test_placeholder_secret'
 });
 
+// Health Check (Public)
+app.get('/health', (req, res) => {
+  res.json({ status: 'AetherOS Engine: Operational' });
+});
+
+// Get current system settings and user info (Public/Protected hybrid)
+app.get('/api/me', async (req, res) => {
+  try {
+    const settings = await prisma.systemSettings.findFirst() || {};
+    let user = null;
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split('Bearer ')[1];
+        const decodedToken = await auth.verifyIdToken(token);
+        const adminEmails = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.split(',').map(e => e.trim()) : [];
+        const isSystemAdmin = adminEmails.includes(decodedToken.email);
+
+        user = await prisma.user.upsert({
+          where: { email: decodedToken.email },
+          update: { name: decodedToken.name || decodedToken.email.split('@')[0] },
+          create: { 
+            email: decodedToken.email, 
+            name: decodedToken.name || decodedToken.email.split('@')[0],
+            role: isSystemAdmin ? 'ADMIN' : 'USER'
+          }
+        });
+      } catch (e) {
+        // Ignore invalid token, just return settings + null user
+      }
+    }
+    
+    res.json({ user, settings });
+  } catch (error) {
+    logger.error('Database connection failed in /api/me', error);
+    res.json({ user: null, settings: {} });
+  }
+});
+
+// --- Public Configuration Endpoints ---
+app.get('/api/config/plans', (req, res) => {
+  res.json([
+    {
+      id: 'Pro',
+      level: 1,
+      price: 999,
+      features: ['Priority Scan Queue', 'Unlimited Deployments', 'Custom Domains', '24/7 Shield Support'],
+      icon: 'Zap',
+      color: 'primary'
+    },
+    {
+      id: 'Enterprise',
+      level: 2,
+      price: 4999,
+      features: ['Dedicated Infrastructure', 'SLA Guarantee', 'Advanced RBAC', 'Deep Security Insights'],
+      icon: 'Crown',
+      color: 'yellow'
+    }
+  ]);
+});
+
 // Middleware for Firebase Auth validation (everything after this is protected)
 app.use('/api/*', authMiddleware);
 
@@ -111,7 +172,7 @@ app.post('/api/scan', async (req, res) => {
 
 // Main Deployment Endpoint
 app.post('/api/deploy', async (req, res) => {
-  const { repoUrl, cloudProvider } = req.body;
+  const { repoUrl, cloudProvider, strategy } = req.body;
 
   try {
     // Check Global System Settings
@@ -130,88 +191,139 @@ app.post('/api/deploy', async (req, res) => {
       return res.status(400).json({ error: 'GitHub URL is required' });
     }
 
-    logger.info('Initializing deployment and security audit for repo', { repoUrl });
+    logger.info('Initializing deployment lifecycle', { repoUrl });
 
-    // 1. First, create a temporary directory to clone and scan (The "Scanner" & "Shield")
-    const { analyzeRepo } = require('./services/repoAnalyzer');
-    const { performSecurityAudit } = require('./services/securityAudit');
-    const temp = require('temp').track();
-    const simpleGit = require('simple-git');
-    const fs = require('fs-extra');
-    
-    const tempDir = temp.mkdirSync('aetheros-deploy-shield');
-    const git = simpleGit();
-    await git.clone(repoUrl, tempDir, ['--depth', '1']);
-
-    // 2. Perform Security Audit
-    const vulnerabilities = await performSecurityAudit(tempDir);
-    const hasCritical = vulnerabilities.some(v => v.severity === 'CRITICAL');
-
-    // 3. Create Deployment Record
+    // 1. Create PRELIMINARY Deployment Record (To provide a stable ID for logs)
     const deployment = await prisma.deployment.create({
       data: {
         repoUrl,
-        cloudProvider: cloudProvider || 'RENDER',
+        cloudProvider: cloudProvider || 'AUTO',
         userId: req.user.id,
-        status: hasCritical ? 'FAILED' : 'IN_PROGRESS',
-        securityScore: 100 - (vulnerabilities.length * 10), // Simple math for now
-        buildLogs: hasCritical 
-          ? `CRITICAL SECURITY FAILURE: \n${JSON.stringify(vulnerabilities, null, 2)}`
-          : 'Initializing AetherOS engine...\nScanning codebase for security vulnerabilities...\nProvisioning build environment...'
+        status: 'INITIALIZING',
+        url: `http://localhost:3000/pending`, // Placeholder or initial URL
+        buildLogs: 'AetherOS Brain initializing development lifecycle...'
       }
     });
 
-    // Cleanup temp dir
-    await fs.remove(tempDir);
+    logEmitter.emit('log', { deploymentId: deployment.id, message: '[system] Environment initialized. Preparing scanner...' });
+
+    // 2. Clone and Perform Security Audit
+    const tempDir = temp.mkdirSync(`aetheros-${deployment.id}`);
+    const git = simpleGit();
+    
+    logEmitter.emit('log', { deploymentId: deployment.id, message: '[system] Cloning repository for security audit...' });
+    await git.clone(repoUrl, tempDir, ['--depth', '1']);
+    
+    // NEW: Get Commit Hash for Caching
+    const gitInstance = simpleGit(tempDir);
+    const commitHash = await gitInstance.revparse(['HEAD']);
+    
+    // NEW: Check for Cached Analysis
+    const cachedDeployment = await prisma.deployment.findFirst({
+      where: {
+        repoUrl,
+        commitHash,
+        status: 'SUCCESS'
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    let vulnerabilities = [];
+    let analysis = null;
+
+    if (cachedDeployment && cachedDeployment.analysisResult) {
+      logEmitter.emit('log', { deploymentId: deployment.id, message: '[brain] REUSE: Valid architectural cache found for this commit.' });
+      analysis = JSON.parse(cachedDeployment.analysisResult);
+      // We reuse the security score too
+      vulnerabilities = []; 
+    }
+
+    if (!analysis) {
+      vulnerabilities = await performSecurityAudit(tempDir, logEmitter, deployment.id);
+    }
+    
+    const hasCritical = vulnerabilities.some(v => v.severity === 'CRITICAL');
+
+    // 3. Update Record with Security Stats
+    await prisma.deployment.update({
+      where: { id: deployment.id },
+      data: {
+        commitHash,
+        securityScore: analysis ? (cachedDeployment?.securityScore || 100) : Math.max(0, 100 - (vulnerabilities.length * 10)),
+        status: hasCritical ? 'FAILED' : 'ANALYZING'
+      }
+    });
 
     if (hasCritical) {
-      logger.warn('Deployment FAILED due to critical security vulnerabilities', { repoUrl, vulnerabilities });
-      return res.status(403).json({
-        message: 'Deployment blocked: Critical security vulnerabilities detected',
+      logEmitter.emit('log', { deploymentId: deployment.id, message: '[shield] CRITICAL FAILURE: Deployment blocked due to security risks.' });
+      return res.status(403).json({ 
+        message: 'Deployment blocked: Critical security vulnerabilities detected', 
         deploymentId: deployment.id,
-        vulnerabilities
+        vulnerabilities 
       });
     }
 
-    // 4. Start Streaming Simulation (Feature 4)
+    // 4. Perform Repository Analysis (Use Cached or Run New)
+    if (!analysis) {
+      analysis = await analyzeRepo(repoUrl, logEmitter, deployment.id);
+    }
+    
+
+    const deploymentUrl = `${process.env.LIVE_URL || 'http://localhost:3000'}/${deployment.id}`;
+
+    // 5. Finalize Handshake Response (With analysis results & suggested plan)
     res.status(202).json({
-      message: 'Secure deployment triggered successfully',
+      message: 'AetherOS Agentic Hub initialized...',
       deploymentId: deployment.id,
-      status: deployment.status
+      status: 'PLANNING',
+      analysis,
+      suggestedPlan: analysis.suggestedPlan || 'Free',
+      url: deploymentUrl
     });
 
-    // Async process with real-time log simulation
-    (async () => {
-      const logs = [
-        '[shield] Running Feature 2 Audit...',
-        '[shield] Secrets check: OK',
-        '[shield] Dependencies check: OK',
-        '[mcp] Reasoning Cloud Fit for Render...',
-        '[mcp] Fetching 2026 Free Tier Limits...',
-        '[mcp] Triggering deployment to Render API...',
-      ];
-
-      let fullLog = deployment.buildLogs;
-
-      for (const log of logs) {
-        await new Promise(r => setTimeout(r, 1500));
-        fullLog += `\n${log}`;
-        logEmitter.emit('log', { deploymentId: deployment.id, message: log });
+    // Update URL & Cached Result in DB
+    await prisma.deployment.update({
+      where: { id: deployment.id },
+      data: { 
+        url: deploymentUrl,
+        analysisResult: JSON.stringify(analysis)
       }
+    });
 
-      await prisma.deployment.update({
-        where: { id: deployment.id },
-        data: {
-          status: 'SUCCESS',
-          buildLogs: fullLog + '\n[aether] Deployment live on Render.'
-        }
-      });
-      logEmitter.emit('log', { deploymentId: deployment.id, message: '[aether] Deployment live on Render.' });
+    // 6. Trigger Autonomous Agent in Background
+    (async () => {
+      try {
+        logEmitter.emit('log', { deploymentId: deployment.id, message: `[brain] Suggested Plan: ${analysis.suggestedPlan || 'Free'}` });
+        
+        const agentResult = await runAutonomousDeployment(
+          { ...analysis, repoUrl, strategy }, 
+          logEmitter, 
+          deployment.id
+        );
+
+        logEmitter.emit('log', { deploymentId: deployment.id, message: `[agent] SUCCESS: ${agentResult.status}` });
+
+        await prisma.deployment.update({
+          where: { id: deployment.id },
+          data: { 
+            status: 'SUCCESS',
+            reasoning: agentResult.agentReasoning
+          }
+        });
+      } catch (err) {
+        logger.error('Agentic deployment loop failed', err);
+        logEmitter.emit('log', { deploymentId: deployment.id, message: `[error] Agentic failure: ${err.message}` });
+        
+        await prisma.deployment.update({
+          where: { id: deployment.id },
+          data: { status: 'FAILED' }
+        });
+      }
     })();
 
     } catch (error) {
     logger.error('Deployment creation failed', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
 
@@ -249,16 +361,6 @@ app.get('/api/deployments/:id', async (req, res) => {
   }
 });
 
-// Get current user and system settings
-app.get('/api/me', async (req, res) => {
-  try {
-    const settings = await prisma.systemSettings.findFirst();
-    res.json({ user: req.user, settings });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed' });
-  }
-});
-
 // Create Payment Order
 app.post('/api/payments/order', async (req, res) => {
   const { amount, planId } = req.body;
@@ -277,7 +379,6 @@ app.post('/api/payments/order', async (req, res) => {
 });
 
 // Verify Payment Signature
-const crypto = require('crypto');
 app.post('/api/payments/verify', async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planLevel } = req.body;
   
@@ -301,13 +402,29 @@ app.post('/api/payments/verify', async (req, res) => {
   }
 });
 
-// Health Check
-app.get('/health', (req, res) => {
-  res.json({ status: 'AetherOS Engine: Operational' });
-});
-
 // --- Admin Endpoints (RBAC Protection) ---
 const { roleMiddleware } = require('./middleware/authMiddleware');
+
+// Get system-wide stats (Admin Only)
+app.get('/api/admin/stats', roleMiddleware(['ADMIN']), async (req, res) => {
+  try {
+    const userCount = await prisma.user.count();
+    const deploymentCount = await prisma.deployment.count();
+    const successCount = await prisma.deployment.count({ where: { status: 'SUCCESS' } });
+    const failedCount = await prisma.deployment.count({ where: { status: 'FAILED' } });
+
+    res.json({
+      userCount,
+      deploymentCount,
+      successCount,
+      failedCount,
+      health: 'EXCELLENT'
+    });
+  } catch (error) {
+    logger.error('Admin Stats Error', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
 
 // Get all system settings
 app.get('/api/admin/settings', roleMiddleware(['ADMIN']), async (req, res) => {
@@ -340,7 +457,10 @@ app.post('/api/admin/settings', roleMiddleware(['ADMIN']), async (req, res) => {
 });
 
 // Super Admin Guard Helper
-const isSuperAdmin = (email) => email === 'admin@gaurangjadoun.in';
+const isSuperAdmin = (email) => {
+  const adminEmails = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.split(',').map(e => e.trim()) : [];
+  return adminEmails.includes(email);
+};
 
 // List all users for management
 app.get('/api/admin/users', roleMiddleware(['ADMIN']), async (req, res) => {

@@ -1,7 +1,16 @@
 'use client';
 
 import { Check, Zap, Shield, Crown } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface Plan {
+  id: string;
+  level: number;
+  price: number;
+  features: string[];
+  icon: string;
+  color: string;
+}
 
 interface PricingProps {
   onSuccess: () => void;
@@ -10,12 +19,40 @@ interface PricingProps {
 
 export default function Pricing({ onSuccess, getToken }: PricingProps) {
   const [loading, setLoading] = useState<string | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [fetching, setFetching] = useState(true);
+
+  const getIcon = (name: string) => {
+    switch (name) {
+      case 'Zap': return <Zap className="text-primary-light w-8 h-8" />;
+      case 'Crown': return <Crown className="text-yellow-400 w-8 h-8" />;
+      default: return <Shield className="text-slate-400 w-8 h-8" />;
+    }
+  };
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+        if (!backendUrl) return;
+        const res = await fetch(`${backendUrl}/api/config/plans`);
+        const data = await res.json();
+        setPlans(data);
+      } catch (e) {
+        console.error('Failed to fetch plans', e);
+      } finally {
+        setFetching(false);
+      }
+    };
+    fetchPlans();
+  }, []);
 
   const handleSubscription = async (planId: string, amount: number, level: number) => {
     setLoading(planId);
     try {
       const token = await getToken();
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+      if (!backendUrl) throw new Error('Backend URL not configured');
       
       // 1. Create Order
       const res = await fetch(`${backendUrl}/api/payments/order`, {
@@ -59,7 +96,6 @@ export default function Pricing({ onSuccess, getToken }: PricingProps) {
         },
         prefill: {
           name: "User",
-          email: "user@example.com",
         },
         theme: {
           color: "#7c3aed",
@@ -76,30 +112,15 @@ export default function Pricing({ onSuccess, getToken }: PricingProps) {
     }
   };
 
-  const plans = [
-    {
-      id: 'Pro',
-      level: 1,
-      price: 999,
-      features: ['Priority Scan Queue', 'Unlimited Deployments', 'Custom Domains', '24/7 Shield Support'],
-      icon: <Zap className="text-primary-light w-8 h-8" />,
-      color: 'primary'
-    },
-    {
-      id: 'Enterprise',
-      level: 2,
-      price: 4999,
-      features: ['Dedicated Infrastructure', 'SLA Guarantee', 'Advanced RBAC', 'Deep Security Insights'],
-      icon: <Crown className="text-yellow-400 w-8 h-8" />,
-      color: 'yellow'
-    }
-  ];
+  if (fetching) {
+    return <div className="text-center py-12 text-slate-400">Loading plans...</div>;
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto py-12">
       {plans.map((plan) => (
         <div key={plan.id} className="glass p-8 rounded-3xl border-white/5 flex flex-col hover:border-primary-DEFAULT/30 transition-all duration-500 group">
-          <div className="mb-6">{plan.icon}</div>
+          <div className="mb-6">{getIcon(plan.icon)}</div>
           <h3 className="text-2xl font-bold text-white mb-2">{plan.id} Plan</h3>
           <p className="text-4xl font-extrabold text-white mb-6">₹{plan.price}<span className="text-sm text-slate-500 font-normal">/mo</span></p>
 
