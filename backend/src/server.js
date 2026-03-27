@@ -254,13 +254,17 @@ app.post('/api/deploy', async (req, res) => {
       }
     });
 
-    if (hasCritical) {
+    if (hasCritical && (strategy !== 'FORCE' || req.user.role !== 'ADMIN')) {
       logEmitter.emit('log', { deploymentId: deployment.id, message: '[shield] CRITICAL FAILURE: Deployment blocked due to security risks.' });
       return res.status(403).json({ 
         message: 'Deployment blocked: Critical security vulnerabilities detected', 
         deploymentId: deployment.id,
         vulnerabilities 
       });
+    }
+
+    if (hasCritical && strategy === 'FORCE' && req.user.role === 'ADMIN') {
+      logEmitter.emit('log', { deploymentId: deployment.id, message: '[shield] WARNING: Administrator override active. Proceeding despite critical vulnerabilities.' });
     }
 
     // 4. Perform Repository Analysis (Use Cached or Run New)
