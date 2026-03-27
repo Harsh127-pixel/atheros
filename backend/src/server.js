@@ -12,6 +12,7 @@ const EventEmitter = require('events');
 const temp = require('temp').track();
 const simpleGit = require('simple-git');
 const fs = require('fs-extra');
+const crypto = require('crypto');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -222,8 +223,7 @@ app.post('/api/deploy', async (req, res) => {
       where: {
         repoUrl,
         commitHash,
-        status: 'SUCCESS',
-        analysisResult: { not: null }
+        status: 'SUCCESS'
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -379,7 +379,6 @@ app.post('/api/payments/order', async (req, res) => {
 });
 
 // Verify Payment Signature
-const crypto = require('crypto');
 app.post('/api/payments/verify', async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planLevel } = req.body;
   
