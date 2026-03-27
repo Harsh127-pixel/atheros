@@ -212,15 +212,44 @@ app.post('/api/deploy', async (req, res) => {
     
     logEmitter.emit('log', { deploymentId: deployment.id, message: '[system] Cloning repository for security audit...' });
     await git.clone(repoUrl, tempDir, ['--depth', '1']);
+    
+    // NEW: Get Commit Hash for Caching
+    const gitInstance = simpleGit(tempDir);
+    const commitHash = await gitInstance.revparse(['HEAD']);
+    
+    // NEW: Check for Cached Analysis
+    const cachedDeployment = await prisma.deployment.findFirst({
+      where: {
+        repoUrl,
+        commitHash,
+        status: 'SUCCESS',
+        analysisResult: { not: null }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
-    const vulnerabilities = await performSecurityAudit(tempDir, logEmitter, deployment.id);
+    let vulnerabilities = [];
+    let analysis = null;
+
+    if (cachedDeployment && cachedDeployment.analysisResult) {
+      logEmitter.emit('log', { deploymentId: deployment.id, message: '[brain] REUSE: Valid architectural cache found for this commit.' });
+      analysis = JSON.parse(cachedDeployment.analysisResult);
+      // We reuse the security score too
+      vulnerabilities = []; 
+    }
+
+    if (!analysis) {
+      vulnerabilities = await performSecurityAudit(tempDir, logEmitter, deployment.id);
+    }
+    
     const hasCritical = vulnerabilities.some(v => v.severity === 'CRITICAL');
 
     // 3. Update Record with Security Stats
     await prisma.deployment.update({
       where: { id: deployment.id },
       data: {
-        securityScore: Math.max(0, 100 - (vulnerabilities.length * 10)),
+        commitHash,
+        securityScore: analysis ? (cachedDeployment?.securityScore || 100) : Math.max(0, 100 - (vulnerabilities.length * 10)),
         status: hasCritical ? 'FAILED' : 'ANALYZING'
       }
     });
@@ -234,8 +263,11 @@ app.post('/api/deploy', async (req, res) => {
       });
     }
 
-    // 4. Perform Repository Analysis
-    const analysis = await analyzeRepo(repoUrl, logEmitter, deployment.id);
+    // 4. Perform Repository Analysis (Use Cached or Run New)
+    if (!analysis) {
+      analysis = await analyzeRepo(repoUrl, logEmitter, deployment.id);
+    }
+    
 
     const deploymentUrl = `${process.env.LIVE_URL || 'http://localhost:3000'}/${deployment.id}`;
 
@@ -249,10 +281,13 @@ app.post('/api/deploy', async (req, res) => {
       url: deploymentUrl
     });
 
-    // Update URL in DB now that we have the final one
+    // Update URL & Cached Result in DB
     await prisma.deployment.update({
       where: { id: deployment.id },
-      data: { url: deploymentUrl }
+      data: { 
+        url: deploymentUrl,
+        analysisResult: JSON.stringify(analysis)
+      }
     });
 
     // 6. Trigger Autonomous Agent in Background
@@ -288,7 +323,7 @@ app.post('/api/deploy', async (req, res) => {
 
     } catch (error) {
     logger.error('Deployment creation failed', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
 

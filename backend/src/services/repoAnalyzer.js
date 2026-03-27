@@ -3,7 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const temp = require('temp').track();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { performSecurityAudit } = require('./securityAudit');
+const { withRetry } = require('./../utils/ai');
 const logger = require('./../utils/logger');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -91,6 +91,7 @@ const analyzeRepo = async (repoUrl, logEmitter = null, scanId = null) => {
 
     // 3. Read snippets for AI context (backend focused)
     let snippets = '';
+    const mainBackend = components.find(c => c.type === 'backend');
     if (mainBackend && mainBackend.entryPoint !== 'Not detected') {
       const entryPath = path.join(tempDir, mainBackend.path, mainBackend.entryPoint);
       if (await fs.pathExists(entryPath)) {
@@ -133,7 +134,7 @@ const analyzeRepo = async (repoUrl, logEmitter = null, scanId = null) => {
       `;
       emit("Consulting AetherOS Brain for architectural insights...");
 
-      const result = await model.generateContent(prompt);
+      const result = await withRetry(() => model.generateContent(prompt));
       const responseText = result.response.text();
       
       const jsonMatch = responseText.match(/\{.*\}/s);

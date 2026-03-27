@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { withRetry } = require('./../utils/ai');
 const logger = require('./../utils/logger');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -67,7 +68,7 @@ const performSecurityAudit = async (projectPath, logEmitter = null, auditId = nu
           If no vulnerabilities are found, return exactly [].
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await withRetry(() => model.generateContent(prompt));
         const responseText = result.response.text();
         const jsonMatch = responseText.match(/\[.*\]/s);
         

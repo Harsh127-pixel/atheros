@@ -41,6 +41,8 @@ model Deployment {
   status         String   @default("PENDING") // PENDING, IN_PROGRESS, SUCCESS, FAILED
   cloudProvider  String?  // AWS, VERCEL, RENDER, AZURE
   url            String?  // The live deployment URL
+  commitHash     String?
+  analysisResult String?  @db.Text
   securityScore  Int?     @default(0)
   buildLogs      String?  @db.Text
   reasoning      String?  @db.Text
