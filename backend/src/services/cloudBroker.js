@@ -67,11 +67,13 @@ const triggerGCPDeploy = async (repoUrl, serviceName) => {
   return response.data;
 };
 
-const deployToBestCloud = async (language, repoUrl) => {
-  const { provider, reason } = getCloudBrokerDecision(language);
+const deployToBestCloud = async (language, repoUrl, forcedProvider = null) => {
+  const { provider: detectedProvider, reason } = getCloudBrokerDecision(language);
+  const provider = forcedProvider || detectedProvider;
+  
   const serviceName = `aether-${Math.random().toString(36).substring(7)}`;
 
-  logger.info(`Cloud Broker: Decision Matrix selected ${provider} for ${language} because ${reason}`);
+  logger.info(`Cloud Broker: ${forcedProvider ? 'Agent' : 'Decision Matrix'} selected ${provider} for ${language}`);
 
   try {
     let result;

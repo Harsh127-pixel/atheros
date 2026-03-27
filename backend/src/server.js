@@ -146,7 +146,7 @@ app.post('/api/scan', async (req, res) => {
 
 // Main Deployment Endpoint
 app.post('/api/deploy', async (req, res) => {
-  const { repoUrl, cloudProvider } = req.body;
+  const { repoUrl, cloudProvider, strategy } = req.body;
 
   try {
     // Check Global System Settings
@@ -176,105 +176,78 @@ app.post('/api/deploy', async (req, res) => {
     const vulnerabilities = await performSecurityAudit(tempDir);
     const hasCritical = vulnerabilities.some(v => v.severity === 'CRITICAL');
 
-    // 3. High-Level AI Logic: Autonomous "AetherOS Brain" Positioning
-    let reasoningText = "AI Reasoning bypassed.";
+    // 3. High-Level AI Logic: Autonomous "AetherOS Brain" positioning
+    let reasoningText = "Agent analysis bypassed.";
+    let analysis;
     try {
       if (!hasCritical) {
-        const analysis = await analyzeRepo(repoUrl);
-        const agentResult = await runAutonomousDeployment({
-          ...analysis,
-          repoUrl
-        });
-        reasoningText = agentResult.agentReasoning;
+        analysis = await analyzeRepo(repoUrl);
+        // We initialize the agent here, but the actual deployment call is moved into the sync response as a background task
+        reasoningText = "AetherOS Brain initialized for multi-cloud deployment...";
       }
     } catch (e) {
       logger.error('Autonomous Agent Reasoning Failed', e);
       reasoningText = "Autonomous Agent Reasoning Momentarily Offline.";
     }
 
-    // 4. Create Deployment Record (with In-Memory Fallback for Showcase Resilience)
+    // 4. Create Deployment Record
     let deployment;
     try {
       deployment = await prisma.deployment.create({
         data: {
           repoUrl,
-          cloudProvider: cloudProvider || 'RENDER',
+          cloudProvider: cloudProvider || 'AUTO',
           userId: req.user.id,
           status: hasCritical ? 'FAILED' : 'IN_PROGRESS',
           securityScore: Math.max(0, 100 - (vulnerabilities.length * 10)),
           reasoning: reasoningText,
           buildLogs: hasCritical 
             ? `CRITICAL SECURITY FAILURE: \n${JSON.stringify(vulnerabilities, null, 2)}`
-            : `AetherOS Brain Reasoning: ${reasoningText.slice(0, 100)}...\nProvisioning build environment...`
+            : `AetherOS Brain (v2.0 Agentic) initialized.\nAnalyzing monorepo suitability...`
         }
       });
     } catch (e) {
-      console.error('Prisma failed during deployment creation, using in-memory fallback');
       deployment = {
         id: `local-vol-${Math.random().toString(36).substring(7)}`,
         repoUrl,
-        cloudProvider: cloudProvider || 'RENDER',
         status: hasCritical ? 'FAILED' : 'IN_PROGRESS',
-        buildLogs: `AetherOS Brain (Local Mode): ${reasoningText}\nProvisioning locally...`
       };
-      // In a real app we'd push to an array, but for the demo return is enough
     }
-
-    // Cleanup temp dir
-    await fs.remove(tempDir);
 
     if (hasCritical) {
-      logger.warn('Deployment FAILED due to critical security vulnerabilities', { repoUrl, vulnerabilities });
-      return res.status(403).json({
-        message: 'Deployment blocked: Critical security vulnerabilities detected',
-        deploymentId: deployment.id,
-        vulnerabilities
-      });
+      return res.status(403).json({ message: 'Deployment blocked: Critical security vulnerabilities detected', deploymentId: deployment.id });
     }
 
-    // 4. Start Real-Time Cloud Provisioning
+    // 5. Start Agentic Real-Time Handshake
     res.status(202).json({
-      message: 'Autonomous cloud provisioning initialized...',
+      message: 'AetherOS Agentic Hub initialized...',
       deploymentId: deployment.id,
       status: deployment.status,
-      url: `https://aetheros-live.onrender.com/${deployment.id}`
     });
 
-    // Real-Time Async Execution
+    // Real-Time Agentic Execution Loop
     (async () => {
       try {
-        const { deployToBestCloud, getCloudBrokerDecision } = require('./services/cloudBroker');
-        
-        logEmitter.emit('log', { deploymentId: deployment.id, message: '[mcp] AetherOS Brain analyzing multi-cloud viability...' });
-        const decision = getCloudBrokerDecision(vulnerabilities.length > 0 ? 'Unknown' : 'Node.js');
-        
-        logEmitter.emit('log', { deploymentId: deployment.id, message: `[mcp] Architecture Decision: ${decision.provider} (${decision.reason})` });
-        logEmitter.emit('log', { deploymentId: deployment.id, message: `[mcp] Initiating real-time handshake with ${decision.provider} API...` });
+        const agentResult = await runAutonomousDeployment(
+          { ...analysis, repoUrl, strategy }, 
+          logEmitter, 
+          deployment.id
+        );
 
-        // Trigger Real Cloud Deployment
-        const result = await deployToBestCloud(vulnerabilities.length > 0 ? 'Unknown' : 'Node.js', repoUrl);
-        
-        logEmitter.emit('log', { deploymentId: deployment.id, message: `[mcp] Provider acknowledged: Service "${result.serviceName}" is being provisioned.` });
-        
-        await new Promise(r => setTimeout(r, 2000));
-        const liveUrl = result.result.service?.dashboardUrl || `https://dashboard.render.com/web/${result.result.service?.id}`;
-        
-        logEmitter.emit('log', { deploymentId: deployment.id, message: `[aether] SUCCESS! Your live environment is coming online.` });
-        logEmitter.emit('log', { deploymentId: deployment.id, message: `[aether] Live URL: ${liveUrl}` });
+        logEmitter.emit('log', { deploymentId: deployment.id, message: `[agent] SUCCESS: ${agentResult.status}` });
 
         if (!deployment.id.startsWith('local-vol')) {
-          await prisma.deployment.update({
-            where: { id: deployment.id },
-            data: { 
-              status: 'SUCCESS',
-              url: liveUrl,
-              cloudProvider: result.provider
-            }
-          });
+           await prisma.deployment.update({
+             where: { id: deployment.id },
+             data: { 
+               status: 'SUCCESS',
+               reasoning: agentResult.agentReasoning
+             }
+           });
         }
       } catch (err) {
-        logger.error('Real-time deployment failed', err);
-        logEmitter.emit('log', { deploymentId: deployment.id, message: `[error] Auto-provisioning failed: ${err.message}` });
+        logger.error('Agentic deployment loop failed', err);
+        logEmitter.emit('log', { deploymentId: deployment.id, message: `[error] Agentic failure: ${err.message}` });
       }
     })();
 
