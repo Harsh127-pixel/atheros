@@ -52,11 +52,14 @@ const authMiddleware = async (req, res, next) => {
       });
 
       if (!user) {
+        const adminEmails = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.split(',').map(e => e.trim()) : [];
+        const isSystemAdmin = adminEmails.includes(decodedToken.email);
+        
         user = await prisma.user.create({
           data: {
             email: decodedToken.email,
             name: decodedToken.name || decodedToken.email.split('@')[0],
-            role: decodedToken.email === 'admin@gaurangjadoun.in' ? 'ADMIN' : 'USER',
+            role: isSystemAdmin ? 'ADMIN' : 'USER',
           }
         });
       }
@@ -66,11 +69,14 @@ const authMiddleware = async (req, res, next) => {
       }
     } catch (dbError) {
       console.error('Database connection failed in authMiddleware, using stateless fallback user');
+      const adminEmails = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.split(',').map(e => e.trim()) : [];
+      const isSystemAdmin = adminEmails.includes(decodedToken.email);
+
       user = {
         id: 'fallback-' + decodedToken.uid.slice(0, 8),
         email: decodedToken.email,
         name: decodedToken.name || decodedToken.email.split('@')[0],
-        role: decodedToken.email === 'admin@gaurangjadoun.in' ? 'ADMIN' : 'USER',
+        role: isSystemAdmin ? 'ADMIN' : 'USER',
         isBanned: false
       };
     }

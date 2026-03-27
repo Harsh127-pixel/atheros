@@ -103,13 +103,16 @@ app.get('/api/me', async (req, res) => {
       try {
         const token = authHeader.split('Bearer ')[1];
         const decodedToken = await auth.verifyIdToken(token);
+        const adminEmails = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.split(',').map(e => e.trim()) : [];
+        const isSystemAdmin = adminEmails.includes(decodedToken.email);
+
         user = await prisma.user.upsert({
           where: { email: decodedToken.email },
           update: { name: decodedToken.name || decodedToken.email.split('@')[0] },
           create: { 
             email: decodedToken.email, 
             name: decodedToken.name || decodedToken.email.split('@')[0],
-            role: decodedToken.email === 'admin@gaurangjadoun.in' ? 'ADMIN' : 'USER'
+            role: isSystemAdmin ? 'ADMIN' : 'USER'
           }
         });
       } catch (e) {
@@ -122,6 +125,28 @@ app.get('/api/me', async (req, res) => {
     logger.error('Database connection failed in /api/me', error);
     res.json({ user: null, settings: {} });
   }
+});
+
+// --- Public Configuration Endpoints ---
+app.get('/api/config/plans', (req, res) => {
+  res.json([
+    {
+      id: 'Pro',
+      level: 1,
+      price: 999,
+      features: ['Priority Scan Queue', 'Unlimited Deployments', 'Custom Domains', '24/7 Shield Support'],
+      icon: 'Zap',
+      color: 'primary'
+    },
+    {
+      id: 'Enterprise',
+      level: 2,
+      price: 4999,
+      features: ['Dedicated Infrastructure', 'SLA Guarantee', 'Advanced RBAC', 'Deep Security Insights'],
+      icon: 'Crown',
+      color: 'yellow'
+    }
+  ]);
 });
 
 // Middleware for Firebase Auth validation (everything after this is protected)
@@ -165,69 +190,76 @@ app.post('/api/deploy', async (req, res) => {
       return res.status(400).json({ error: 'GitHub URL is required' });
     }
 
-    logger.info('Initializing deployment and security audit for repo', { repoUrl });
+    logger.info('Initializing deployment lifecycle', { repoUrl });
 
-    // 1. First, create a temporary directory to clone and scan (The "Scanner" & "Shield")
-    const tempDir = temp.mkdirSync('aetheros-deploy-shield');
+    // 1. Create PRELIMINARY Deployment Record (To provide a stable ID for logs)
+    const deployment = await prisma.deployment.create({
+      data: {
+        repoUrl,
+        cloudProvider: cloudProvider || 'AUTO',
+        userId: req.user.id,
+        status: 'INITIALIZING',
+        url: `http://localhost:3000/pending`, // Placeholder or initial URL
+        buildLogs: 'AetherOS Brain initializing development lifecycle...'
+      }
+    });
+
+    logEmitter.emit('log', { deploymentId: deployment.id, message: '[system] Environment initialized. Preparing scanner...' });
+
+    // 2. Clone and Perform Security Audit
+    const tempDir = temp.mkdirSync(`aetheros-${deployment.id}`);
     const git = simpleGit();
+    
+    logEmitter.emit('log', { deploymentId: deployment.id, message: '[system] Cloning repository for security audit...' });
     await git.clone(repoUrl, tempDir, ['--depth', '1']);
 
-    // 2. Perform Security Audit
-    const vulnerabilities = await performSecurityAudit(tempDir);
+    const vulnerabilities = await performSecurityAudit(tempDir, logEmitter, deployment.id);
     const hasCritical = vulnerabilities.some(v => v.severity === 'CRITICAL');
 
-    // 3. High-Level AI Logic: Autonomous "AetherOS Brain" positioning
-    let reasoningText = "Agent analysis bypassed.";
-    let analysis;
-    try {
-      if (!hasCritical) {
-        analysis = await analyzeRepo(repoUrl);
-        // We initialize the agent here, but the actual deployment call is moved into the sync response as a background task
-        reasoningText = "AetherOS Brain initialized for multi-cloud deployment...";
+    // 3. Update Record with Security Stats
+    await prisma.deployment.update({
+      where: { id: deployment.id },
+      data: {
+        securityScore: Math.max(0, 100 - (vulnerabilities.length * 10)),
+        status: hasCritical ? 'FAILED' : 'ANALYZING'
       }
-    } catch (e) {
-      logger.error('Autonomous Agent Reasoning Failed', e);
-      reasoningText = "Autonomous Agent Reasoning Momentarily Offline.";
-    }
-
-    // 4. Create Deployment Record
-    let deployment;
-    try {
-      deployment = await prisma.deployment.create({
-        data: {
-          repoUrl,
-          cloudProvider: cloudProvider || 'AUTO',
-          userId: req.user.id,
-          status: hasCritical ? 'FAILED' : 'IN_PROGRESS',
-          securityScore: Math.max(0, 100 - (vulnerabilities.length * 10)),
-          reasoning: reasoningText,
-          buildLogs: hasCritical 
-            ? `CRITICAL SECURITY FAILURE: \n${JSON.stringify(vulnerabilities, null, 2)}`
-            : `AetherOS Brain (v2.0 Agentic) initialized.\nAnalyzing monorepo suitability...`
-        }
-      });
-    } catch (e) {
-      deployment = {
-        id: `local-vol-${Math.random().toString(36).substring(7)}`,
-        repoUrl,
-        status: hasCritical ? 'FAILED' : 'IN_PROGRESS',
-      };
-    }
+    });
 
     if (hasCritical) {
-      return res.status(403).json({ message: 'Deployment blocked: Critical security vulnerabilities detected', deploymentId: deployment.id });
+      logEmitter.emit('log', { deploymentId: deployment.id, message: '[shield] CRITICAL FAILURE: Deployment blocked due to security risks.' });
+      return res.status(403).json({ 
+        message: 'Deployment blocked: Critical security vulnerabilities detected', 
+        deploymentId: deployment.id,
+        vulnerabilities 
+      });
     }
 
-    // 5. Start Agentic Real-Time Handshake
+    // 4. Perform Repository Analysis
+    const analysis = await analyzeRepo(repoUrl, logEmitter, deployment.id);
+
+    const deploymentUrl = `${process.env.LIVE_URL || 'http://localhost:3000'}/${deployment.id}`;
+
+    // 5. Finalize Handshake Response (With analysis results & suggested plan)
     res.status(202).json({
       message: 'AetherOS Agentic Hub initialized...',
       deploymentId: deployment.id,
-      status: deployment.status,
+      status: 'PLANNING',
+      analysis,
+      suggestedPlan: analysis.suggestedPlan || 'Free',
+      url: deploymentUrl
     });
 
-    // Real-Time Agentic Execution Loop
+    // Update URL in DB now that we have the final one
+    await prisma.deployment.update({
+      where: { id: deployment.id },
+      data: { url: deploymentUrl }
+    });
+
+    // 6. Trigger Autonomous Agent in Background
     (async () => {
       try {
+        logEmitter.emit('log', { deploymentId: deployment.id, message: `[brain] Suggested Plan: ${analysis.suggestedPlan || 'Free'}` });
+        
         const agentResult = await runAutonomousDeployment(
           { ...analysis, repoUrl, strategy }, 
           logEmitter, 
@@ -236,18 +268,21 @@ app.post('/api/deploy', async (req, res) => {
 
         logEmitter.emit('log', { deploymentId: deployment.id, message: `[agent] SUCCESS: ${agentResult.status}` });
 
-        if (!deployment.id.startsWith('local-vol')) {
-           await prisma.deployment.update({
-             where: { id: deployment.id },
-             data: { 
-               status: 'SUCCESS',
-               reasoning: agentResult.agentReasoning
-             }
-           });
-        }
+        await prisma.deployment.update({
+          where: { id: deployment.id },
+          data: { 
+            status: 'SUCCESS',
+            reasoning: agentResult.agentReasoning
+          }
+        });
       } catch (err) {
         logger.error('Agentic deployment loop failed', err);
         logEmitter.emit('log', { deploymentId: deployment.id, message: `[error] Agentic failure: ${err.message}` });
+        
+        await prisma.deployment.update({
+          where: { id: deployment.id },
+          data: { status: 'FAILED' }
+        });
       }
     })();
 
@@ -388,7 +423,10 @@ app.post('/api/admin/settings', roleMiddleware(['ADMIN']), async (req, res) => {
 });
 
 // Super Admin Guard Helper
-const isSuperAdmin = (email) => email === 'admin@gaurangjadoun.in';
+const isSuperAdmin = (email) => {
+  const adminEmails = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.split(',').map(e => e.trim()) : [];
+  return adminEmails.includes(email);
+};
 
 // List all users for management
 app.get('/api/admin/users', roleMiddleware(['ADMIN']), async (req, res) => {

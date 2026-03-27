@@ -65,26 +65,36 @@ const detectComponents = async (tempDir, files) => {
   return components;
 };
 
-const analyzeRepo = async (repoUrl) => {
+const analyzeRepo = async (repoUrl, logEmitter = null, scanId = null) => {
+  const emit = (message) => {
+    if (logEmitter && scanId) {
+      logEmitter.emit('log', { deploymentId: scanId, message: `[scanner] ${message}` });
+    }
+    logger.info(`[${scanId || 'scan'}] ${message}`);
+  };
+
   const tempDir = temp.mkdirSync('aetheros-scan');
   const git = simpleGit();
 
   try {
-    logger.info(`Scanning repository: ${repoUrl}`);
+    emit(`Initializing scan for: ${repoUrl}`);
     
     // 1. Clone to temp directory
+    emit("Cloning repository (shallow)...");
     await git.clone(repoUrl, tempDir, ['--depth', '1']);
     
     // 2. Read file names and detect components
+    emit("Detecting project structure and components...");
     const files = await fs.readdir(tempDir);
     const components = await detectComponents(tempDir, files);
+    emit(`Found ${components.length} components.`);
 
     // 3. Read snippets for AI context (backend focused)
     let snippets = '';
-    const mainBackend = components.find(c => c.type === 'backend');
     if (mainBackend && mainBackend.entryPoint !== 'Not detected') {
       const entryPath = path.join(tempDir, mainBackend.path, mainBackend.entryPoint);
       if (await fs.pathExists(entryPath)) {
+        emit(`Reading entry point context: ${mainBackend.entryPoint}`);
         const entryContent = await fs.readFile(entryPath, 'utf8');
         snippets = entryContent.slice(0, 1500); 
       }
@@ -107,14 +117,21 @@ const analyzeRepo = async (repoUrl) => {
         Suggest the best cloud provider for BOTH backend and frontend (Render, Fly.io, or GCP).
         Note: Frontend can often go to 'Render' (Static) or 'Vercel' (though we only support Render/Fly/GCP tools right now).
         
+        Also, suggest a pricing plan based on complexity:
+        - "Free": Simple single-component apps.
+        - "Pro": Monorepos, high-traffic APIs, or production-grade apps.
+        - "Enterprise": Multi-region, complex infrastructure, or extreme security needs.
+
         Return ONLY a JSON object in this format: 
         { 
           "isMonorepo": boolean,
+          "suggestedPlan": "Free" | "Pro" | "Enterprise",
           "backend": { "language": "string", "suggestedProvider": "Render" | "Fly.io" | "GCP", "rationale": "string" },
           "frontend": { "suggestedProvider": "Render" | "Fly.io" | "GCP", "rationale": "string" } | null,
           "overallRationale": "summary explanation"
         }
       `;
+      emit("Consulting AetherOS Brain for architectural insights...");
 
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();

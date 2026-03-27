@@ -15,12 +15,20 @@ const SECRETS_PATTERNS = [
   /\.env/i // Presence of .env files
 ];
 
-const performSecurityAudit = async (projectPath) => {
+const performSecurityAudit = async (projectPath, logEmitter = null, auditId = null) => {
+  const emit = (message) => {
+    if (logEmitter && auditId) {
+      logEmitter.emit('log', { deploymentId: auditId, message: `[shield] ${message}` });
+    }
+  };
+
+  emit("Initializing deep security scan...");
   const vulnerabilities = [];
   const files = await fs.readdir(projectPath);
 
   try {
     // 1. Secrets Detection (Regex)
+    emit("Scanning for exposed credentials and .env files...");
     for (const file of files) {
       const filePath = path.join(projectPath, file);
       const stats = await fs.stat(filePath);
@@ -42,6 +50,7 @@ const performSecurityAudit = async (projectPath) => {
 
     // 2. Vulnerability Scan (AI)
     try {
+      emit("Analyzing project manifest for dependency vulnerabilities...");
       const manifestFile = files.find(f => ['package.json', 'pom.xml', 'go.mod'].includes(f));
       if (manifestFile) {
         const manifestPath = path.join(projectPath, manifestFile);
@@ -77,6 +86,8 @@ const performSecurityAudit = async (projectPath) => {
       });
     }
 
+    const score = Math.max(0, 100 - (vulnerabilities.length * 10));
+    emit(`Security scan complete. Risk Score: ${score}/100. Found ${vulnerabilities.length} issues.`);
     return vulnerabilities;
 
   } catch (error) {

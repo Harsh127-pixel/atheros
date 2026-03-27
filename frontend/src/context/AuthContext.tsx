@@ -24,6 +24,7 @@ interface AuthContextType {
   getToken: () => Promise<string | null>;
   isAdmin: boolean;
   settings: any;
+  loginLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,6 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserWithRole | null>(null);
   const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loginLoading, setLoginLoading] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -45,7 +47,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser({ ...fbUser, role });
 
           // Fetch System Settings from Backend
-          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+          if (!backendUrl) throw new Error('NEXT_PUBLIC_BACKEND_URL not configured');
           const token = await fbUser.getIdToken();
           const meRes = await fetch(`${backendUrl}/api/me`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -75,17 +78,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [pathname, router]);
 
   const loginWithGoogle = React.useCallback(async () => {
+    if (loginLoading) return;
+    setLoginLoading(true);
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-        // Safe to ignore: User just closed the window or clicked login twice
         return;
       }
       console.error('Login failed', error);
       throw error;
+    } finally {
+      setLoginLoading(false);
     }
-  }, []);
+  }, [loginLoading]);
 
   const logout = React.useCallback(async () => {
     try {
@@ -101,10 +107,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return await getIdToken(auth.currentUser);
   }, []);
 
-  const isAdmin = user?.role === 'ADMIN' || user?.email === 'admin@gaurangjadoun.in';
+  const isAdmin = user?.role === 'ADMIN';
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout, getToken, isAdmin, settings }}>
+    <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout, getToken, isAdmin, settings, loginLoading }}>
       {children}
     </AuthContext.Provider>
   );
