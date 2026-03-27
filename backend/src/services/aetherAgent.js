@@ -15,7 +15,8 @@ const runAutonomousDeployment = async (repoAnalysis, logEmitter, deploymentId) =
         const statuses = {
           "Render": "Free Tier available: 512MB RAM, shared CPU. Perfect for Node.js/Static.",
           "GCP": "Free Tier: 2 Million requests/month on Cloud Run. Best for heavy JVM/Go.",
-          "Fly.io": "Free Tier: 3 Shared-CPU-1x VMs (256MB RAM). Best for low-latency Go."
+          "Fly.io": "Free Tier: 3 Shared-CPU-1x VMs (256MB RAM). Best for low-latency Go.",
+          "Vercel": "Hobby Tier: Unlimited deployments, 100GB Bandwidth. Best for Next.js/React."
         };
         return { status: statuses[provider] || "Provider limits unknown, proceed with caution." };
       },
@@ -43,7 +44,7 @@ const runAutonomousDeployment = async (repoAnalysis, logEmitter, deploymentId) =
             parameters: {
               type: "object",
               properties: {
-                provider: { type: "string", enum: ["Render", "GCP", "Fly.io"] }
+                provider: { type: "string", enum: ["Render", "GCP", "Fly.io", "Vercel"] }
               },
               required: ["provider"]
             }
@@ -54,7 +55,7 @@ const runAutonomousDeployment = async (repoAnalysis, logEmitter, deploymentId) =
             parameters: {
               type: "object",
               properties: {
-                provider: { type: "string", enum: ["Render", "GCP", "Fly.io"] },
+                provider: { type: "string", enum: ["Render", "GCP", "Fly.io", "Vercel"] },
                 repoUrl: { type: "string" },
                 component: { type: "string", enum: ["backend", "frontend"] },
                 serviceName: { type: "string" }

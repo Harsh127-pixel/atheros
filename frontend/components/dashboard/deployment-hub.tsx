@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Rocket, Github, AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { Rocket, Github, AlertCircle, ShieldAlert, CheckCircle2, Cloud } from 'lucide-react'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -13,7 +13,8 @@ import { toast } from 'sonner'
 const CLOUD_PROVIDERS = [
   { id: 'render', name: 'Render' },
   { id: 'flyio', name: 'Fly.io' },
-  { id: 'gcp', name: 'Google Cloud Platform' }
+  { id: 'gcp', name: 'Google Cloud Platform' },
+  { id: 'vercel', name: 'Vercel (Standard Frontend)' }
 ]
 
 interface Vulnerability {
@@ -23,7 +24,11 @@ interface Vulnerability {
   file?: string
 }
 
-export function DeploymentHub() {
+interface DeploymentHubProps {
+  onDeploymentStarted?: (id: string) => void
+}
+
+export function DeploymentHub({ onDeploymentStarted }: DeploymentHubProps) {
   const [githubUrl, setGithubUrl] = useState('')
   const [provider, setProvider] = useState('')
   const [isDeploying, setIsDeploying] = useState(false)
@@ -72,7 +77,12 @@ export function DeploymentHub() {
       }
 
       toast.success('Deployment Handshake Successful!');
-      router.push(`/deployments/${data.deploymentId}`);
+      
+      if (onDeploymentStarted) {
+        onDeploymentStarted(data.deploymentId);
+      } else {
+        router.push(`/deployments/${data.deploymentId}`);
+      }
       
     } catch (err: any) {
       console.error('Deployment error:', err)
@@ -86,88 +96,95 @@ export function DeploymentHub() {
   return (
     <Card className="glass p-8 border border-primary/20 backdrop-blur-md h-full flex flex-col">
       <div className="space-y-6 flex-1">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">Deployment Hub</h2>
-          <p className="text-sm text-muted-foreground">Connect your GitHub repository and select a cloud provider</p>
+        <div className="flex items-center gap-3 mb-2">
+           <div className="p-2 bg-primary/10 rounded-lg">
+              <Cloud className="w-5 h-5 text-primary" />
+           </div>
+           <h2 className="text-2xl font-bold text-foreground">Launchpad</h2>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-foreground mb-2 block">GitHub Repository URL</label>
+            <label className="text-xs font-bold text-muted-foreground mb-2 block uppercase tracking-wider">GitHub Repository URL</label>
             <div className="relative">
-              <Github className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+              <Github className="absolute left-3 top-3.5 w-4 h-4 text-muted-foreground/60" />
               <Input
                 placeholder="https://github.com/username/repo"
                 value={githubUrl}
                 onChange={(e) => setGithubUrl(e.target.value)}
-                className="pl-10 bg-input/50 border-border/50 focus:border-primary/50"
+                className="pl-9 bg-input/40 border-border/40 focus:border-primary/50 h-11 text-sm rounded-xl"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground mb-2 block">Cloud Provider</label>
+            <label className="text-xs font-bold text-muted-foreground mb-2 block uppercase tracking-wider">Infrastructure Choice</label>
             <Select value={provider} onValueChange={setProvider}>
-              <SelectTrigger className="bg-input/50 border-border/50 focus:border-primary/50">
-                <SelectValue placeholder="Select a provider" />
+              <SelectTrigger className="bg-input/40 border-border/40 focus:border-primary/50 h-11 text-sm rounded-xl">
+                <SelectValue placeholder="Select a cloud provider" />
               </SelectTrigger>
               <SelectContent>
                 {CLOUD_PROVIDERS.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  <SelectItem key={p.id} value={p.id} className="text-sm font-medium">{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
           {error && !vulnerabilities.length && (
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive text-sm">
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive text-[11px] font-bold">
               <AlertCircle className="w-4 h-4" />
               {error}
             </div>
           )}
 
-          {/* Vulnerability Report */}
+          {/* Vulnerability Report with Force Option */}
           {vulnerabilities.length > 0 && (
-            <div className="space-y-3 p-4 rounded-xl bg-destructive/5 border border-destructive/20">
-               <div className="flex items-center gap-2 text-destructive font-bold text-sm mb-2">
-                  <ShieldAlert className="w-5 h-5" />
-                  Shield Report: Critical Findings
+            <div className="space-y-4 p-5 rounded-2xl bg-destructive/5 border border-destructive/20 backdrop-blur-sm animate-in fade-in slide-in-from-top-4">
+               <div className="flex items-center gap-2 text-destructive font-bold text-xs uppercase tracking-widest">
+                  <ShieldAlert className="w-4 h-4" />
+                  Shield Report: Action Required
                </div>
                <div className="max-h-40 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                   {vulnerabilities.map((v, i) => (
-                    <div key={i} className="text-[11px] p-2 bg-black/40 rounded border border-white/5">
-                       <span className={`font-bold ${v.severity === 'CRITICAL' ? 'text-red-500' : 'text-orange-500'}`}>
-                         [{v.severity}]
-                       </span> {v.type}: {v.description}
-                       {v.file && <div className="text-muted-foreground mt-1 italic">Location: {v.file}</div>}
+                    <div key={i} className="text-[10px] p-2.5 bg-black/50 rounded-lg border border-white/5 flex flex-col gap-1">
+                       <span className={`font-black tracking-tighter ${v.severity === 'CRITICAL' ? 'text-red-500' : 'text-orange-500'}`}>
+                         {v.severity}
+                       </span>
+                       <span className="text-foreground leading-tight">{v.type}: {v.description}</span>
                     </div>
                   ))}
                </div>
                
-               {isAdmin && (
-                  <div className="pt-2 border-t border-white/5 mt-4">
-                     <p className="text-[10px] text-muted-foreground mb-2 italic">As an Administrator, you can override these findings.</p>
-                     <Button 
-                        size="sm" 
-                        variant="destructive" 
-                        className="w-full text-xs" 
-                        onClick={() => handleDeploy(true)}
-                        disabled={isDeploying}
-                      >
-                        Force Deployment (Admin Override)
-                     </Button>
-                  </div>
-               )}
+               <div className="pt-3 border-t border-white/10 space-y-3">
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                     <span className="text-destructive font-bold">WARNING:</span> Proceeding despite critical vulnerabilities is high-risk. Ensure you have reviewed all findings before overriding.
+                  </p>
+                  <Button 
+                    size="sm" 
+                    variant="destructive" 
+                    className="w-full text-[11px] h-9 font-bold tracking-tight rounded-xl" 
+                    onClick={() => handleDeploy(true)}
+                    disabled={isDeploying}
+                  >
+                    Override & Deploy Anyway
+                  </Button>
+               </div>
             </div>
           )}
 
           <Button
             onClick={() => handleDeploy(false)}
             disabled={isDeploying || !githubUrl || !provider}
-            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground gap-2 mt-4"
+            className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground gap-2 mt-4 font-bold text-sm tracking-tight rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all"
           >
-            <Rocket className="w-4 h-4" />
-            {isDeploying ? 'Scanning Codebase...' : 'Start Secure Deployment'}
+            <Rocket className="w-5 h-5" />
+            {isDeploying ? (
+               <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                  Deploying...
+               </div>
+            ) : 'Start Secure Deployment'}
           </Button>
         </div>
       </div>
