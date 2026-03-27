@@ -5,6 +5,8 @@ const DECISION_MATRIX = {
   'Java': { provider: 'GCP', reason: 'Native JVM optimization with Cloud Run containers.' },
   'Go': { provider: 'Fly.io', reason: 'Optimized for Firecracker Micro-VMs and low-latency edges.' },
   'Node.js': { provider: 'Render', reason: 'Easiest deployment flow for Node.js monorepos and static assets.' },
+  'React': { provider: 'Vercel', reason: 'Best-in-class performance and edge distribution for React/Next.js.' },
+  'Next.js': { provider: 'Vercel', reason: 'First-party optimization and seamless SSR support.' },
   'Unknown': { provider: 'Render', reason: 'Defaulting to Render for standard web service support.' }
 };
 
@@ -48,6 +50,23 @@ const triggerFlyDeploy = async (repoUrl, appName) => {
   return response.data;
 };
 
+const triggerVercelDeploy = async (repoUrl, projectName) => {
+  if (!process.env.VERCEL_TOKEN) throw new Error('VERCEL_TOKEN missing');
+  
+  // Vercel deployment via API (simplified)
+  const response = await axios.post('https://api.vercel.com/v13/deployments', {
+    name: projectName,
+    gitSource: {
+      type: 'github',
+      repo: repoUrl.replace('https://github.com/', ''),
+      ref: 'main'
+    }
+  }, {
+    headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` }
+  });
+  return response.data;
+};
+
 const triggerGCPDeploy = async (repoUrl, serviceName) => {
   if (!process.env.GCP_PROJECT_ID) throw new Error('GCP_PROJECT_ID missing');
   
@@ -86,6 +105,9 @@ const deployToBestCloud = async (language, repoUrl, forcedProvider = null) => {
         break;
       case 'GCP':
         result = await triggerGCPDeploy(repoUrl, serviceName);
+        break;
+      case 'Vercel':
+        result = await triggerVercelDeploy(repoUrl, serviceName);
         break;
       default:
         throw new Error(`Provider ${provider} not supported by automation yet.`);
