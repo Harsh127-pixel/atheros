@@ -46,37 +46,46 @@ const analyzeRepo = async (repoUrl) => {
       snippets = entryContent.slice(0, 1500); // Take first 1500 characters
     }
 
-    // 4. AI Feedback with Gemini 1.5 Flash
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY not configured');
+    // 4. AI Feedback with Gemini 2.0 Flash
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error('GEMINI_API_KEY not configured');
+      }
+
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const prompt = `
+        Analyze this codebase for "Cloud Fit" suitability.
+        Files found: ${files.join(', ')}
+        Primary Language Detection: ${language}
+        Entry Point: ${entryPoint}
+        
+        Core Code Snippet:
+        ${snippets}
+        
+        Suggest the best cloud provider between 'GCP', 'Render', and 'Fly.io'.
+        Return ONLY a JSON object in this format: 
+        { "language": "string", "suggestedProvider": "GCP" | "Render" | "Fly.io", "rationale": "one sentence explanation" }
+      `;
+
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text();
+      
+      const jsonMatch = responseText.match(/\{.*\}/s);
+      if (!jsonMatch) throw new Error("AI failed to return valid JSON");
+      
+      const aiResult = JSON.parse(jsonMatch[0]);
+      await fs.remove(tempDir);
+      return aiResult;
+
+    } catch (aiError) {
+      logger.warn('AI Repo Analysis failed or quota reached, using defaults', aiError.message);
+      if (fs.existsSync(tempDir)) await fs.remove(tempDir);
+      return {
+        language,
+        suggestedProvider: 'Render',
+        rationale: 'Defaulting to Render as AI analysis is momentarily unavailable due to quota.'
+      };
     }
-
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `
-      Analyze this codebase for "Cloud Fit" suitability.
-      Files found: ${files.join(', ')}
-      Primary Language Detection: ${language}
-      Entry Point: ${entryPoint}
-      
-      Core Code Snippet:
-      ${snippets}
-      
-      Suggest the best cloud provider between 'GCP', 'Render', and 'Fly.io'.
-      Return ONLY a JSON object in this format: 
-      { "language": "string", "suggestedProvider": "GCP" | "Render" | "Fly.io", "rationale": "one sentence explanation" }
-    `;
-
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    
-    // Cleanup
-    await fs.remove(tempDir);
-
-    // Try to extract JSON from response
-    const jsonMatch = responseText.match(/\{.*\}/s);
-    if (!jsonMatch) throw new Error("AI failed to return valid JSON");
-    
-    return JSON.parse(jsonMatch[0]);
 
   } catch (error) {
     logger.error('Repository analysis failed', error);

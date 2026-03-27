@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import Pricing from '../components/payment/Pricing';
 
 // Re-mapping icons to lucide-react (correcting accidental 'lucide-center')
-import { Github as GitIcon, Play as PlayIcon, Shield as ShieldIcon, Cloud as CloudIcon, CheckCircle2 as CheckIcon, AlertCircle as AlertIcon, Terminal as TermIcon, Loader2 as LoadIcon, Lock as LockIcon } from 'lucide-react';
+import { Github as GitIcon, Play as PlayIcon, Shield as ShieldIcon, Cloud as CloudIcon, CheckCircle2 as CheckIcon, AlertCircle as AlertIcon, Terminal as TermIcon, Loader2 as LoadIcon, Lock as LockIcon, BrainCircuit as BrainIcon } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, loginWithGoogle, logout, getToken, loading, isAdmin, settings } = useAuth();
@@ -62,6 +62,10 @@ export default function Dashboard() {
           <span className="text-2xl font-bold tracking-tight text-white leading-none">AetherOS</span>
         </div>
         <div className="flex items-center space-x-4">
+          <Link href="/history" className="flex items-center space-x-2 px-4 py-2 hover:bg-white/5 rounded-lg text-sm text-slate-400 transition hover:text-white">
+            <BrainIcon className="w-4 h-4" />
+            <span>AI Reasoning</span>
+          </Link>
           {isAdmin && (
             <Link href="/admin" className="flex items-center space-x-2 px-4 py-2 border border-primary-DEFAULT/30 bg-primary-DEFAULT/5 text-primary-light rounded-lg text-sm hover:bg-primary-DEFAULT/10 transition">
               <LockIcon className="w-4 h-4" />
@@ -208,8 +212,19 @@ export default function Dashboard() {
                  <div className="flex items-center space-x-3 mb-4">
                     <CheckIcon className="text-green-500 w-8 h-8" />
                     <div>
-                      <h3 className="text-xl font-bold">Deploying Environment</h3>
+                      <h3 className="text-xl font-bold text-white">Deploying Environment</h3>
                       <p className="text-sm text-slate-400">ID: <span className="text-primary-light font-mono">{response.deploymentId}</span></p>
+                      {response.url && (
+                        <a 
+                          href={response.url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-green-400 hover:text-green-300 transition text-xs flex items-center mt-2 font-mono group"
+                        >
+                          <CheckIcon className="w-3 h-3 mr-2 group-hover:scale-110 transition" />
+                          <span>Open Live Deployment</span>
+                        </a>
+                      )}
                     </div>
                  </div>
                  

@@ -11,10 +11,13 @@
     "frontend:dev": "npm run dev -w frontend",
     "build": "npm install && npm run backend:build",
     "start": "npm run backend:start",
-    "dev": "npm run frontend:dev"
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\""
   },
   "workspaces": [
     "backend",
     "frontend"
-  ]
+  ],
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
 }

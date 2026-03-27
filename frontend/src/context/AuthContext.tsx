@@ -74,28 +74,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, [pathname, router]);
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = React.useCallback(async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        // Safe to ignore: User just closed the window or clicked login twice
+        return;
+      }
       console.error('Login failed', error);
       throw error;
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = React.useCallback(async () => {
     try {
       await signOut(auth);
     } catch (error) {
       console.error('Logout failed', error);
       throw error;
     }
-  };
+  }, []);
 
-  const getToken = async () => {
+  const getToken = React.useCallback(async () => {
     if (!auth.currentUser) return null;
     return await getIdToken(auth.currentUser);
-  };
+  }, []);
 
   const isAdmin = user?.role === 'ADMIN' || user?.email === 'admin@gaurangjadoun.in';
 

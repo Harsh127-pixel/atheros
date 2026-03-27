@@ -27,14 +27,9 @@ export default function AdminDashboard() {
   const [settings, setSettings] = useState<any>(null);
   const [deployments, setDeployments] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-
-  useEffect(() => {
-    if (!loading && !isAdmin) {
-      router.push('/');
-    }
-  }, [loading, isAdmin, router]);
 
   const fetchData = async () => {
     setIsDataLoading(true);
@@ -42,6 +37,12 @@ export default function AdminDashboard() {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
     
     try {
+      // Fetch Stats anyway
+      const statsRes = await fetch(`${backendUrl}/api/admin/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (statsRes.ok) setStats(await statsRes.json());
+
       if (activeTab === 'settings') {
         const res = await fetch(`${backendUrl}/api/admin/settings`, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -69,6 +70,12 @@ export default function AdminDashboard() {
     if (isAdmin) fetchData();
   }, [activeTab, isAdmin]);
 
+  useEffect(() => {
+    if (!loading && !isAdmin) {
+      router.push('/');
+    }
+  }, [loading, isAdmin, router]);
+
   const toggleSetting = async (key: string, value: boolean) => {
     const token = await getToken();
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
@@ -88,12 +95,12 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleUserAction = async (userId: string, action: 'ban' | 'upgrade', value: any) => {
+  const handleUserAction = async (userId: string, action: 'ban' | 'upgrade' | 'role', value: any) => {
     const token = await getToken();
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
     try {
-      const endpoint = action === 'ban' ? 'ban' : 'upgrade';
-      const body = action === 'ban' ? { isBanned: value } : { level: value };
+      const endpoint = action;
+      const body = action === 'ban' ? { isBanned: value } : action === 'upgrade' ? { level: value } : { role: value };
       await fetch(`${backendUrl}/api/admin/users/${userId}/${endpoint}`, {
         method: 'POST',
         headers: { 
@@ -177,6 +184,30 @@ export default function AdminDashboard() {
              <RefreshCw className="w-5 h-5" />
            </button>
         </header>
+
+        {/* Global Statistics Grid */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+            <div className="glass p-6 rounded-2xl border-white/5 space-y-1">
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Users</p>
+              <h4 className="text-3xl font-extrabold text-white">{stats.userCount}</h4>
+            </div>
+            <div className="glass p-6 rounded-2xl border-white/5 space-y-1">
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Deploys</p>
+              <h4 className="text-3xl font-extrabold text-white">{stats.deploymentCount}</h4>
+            </div>
+            <div className="glass p-6 rounded-2xl border-white/5 space-y-1">
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Success Rate</p>
+              <h4 className="text-3xl font-extrabold text-green-400">
+                {stats.deploymentCount > 0 ? ((stats.successCount / stats.deploymentCount) * 100).toFixed(1) : 100}%
+              </h4>
+            </div>
+            <div className="glass p-6 rounded-2xl border-white/5 space-y-1">
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">System Health</p>
+              <h4 className="text-3xl font-extrabold text-primary-light">{stats.health}</h4>
+            </div>
+          </div>
+        )}
 
         {/* Tab Content: Settings */}
         {activeTab === 'settings' && settings && (
@@ -327,9 +358,15 @@ export default function AdminDashboard() {
                               <p className="text-[10px] text-slate-500 font-mono">{u.id}</p>
                            </td>
                            <td className="px-6 py-4">
-                              <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${u.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-500/20 text-slate-400'}`}>
-                                {u.role}
-                              </span>
+                              <select 
+                                onChange={(e) => handleUserAction(u.id, 'role', e.target.value)}
+                                value={u.role}
+                                disabled={u.email === 'admin@gaurangjadoun.in'}
+                                className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md bg-transparent border border-white/10 outline-none ${u.role === 'ADMIN' ? 'text-purple-400' : 'text-slate-400'}`}
+                              >
+                                <option value="USER" className="bg-[#09090b]">User</option>
+                                <option value="ADMIN" className="bg-[#09090b]">Admin</option>
+                              </select>
                            </td>
                            <td className="px-6 py-4">
                               <select 
