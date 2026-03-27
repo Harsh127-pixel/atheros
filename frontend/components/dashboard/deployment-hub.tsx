@@ -5,44 +5,70 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Rocket, Github } from 'lucide-react'
+import { Rocket, Github, AlertCircle } from 'lucide-react'
+import { useAuth } from '@/components/providers/auth-provider'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 const CLOUD_PROVIDERS = [
   { id: 'render', name: 'Render' },
   { id: 'flyio', name: 'Fly.io' },
-  { id: 'gcp', name: 'Google Cloud Platform' },
-  { id: 'aws', name: 'AWS' },
-  { id: 'azure', name: 'Microsoft Azure' },
+  { id: 'gcp', name: 'Google Cloud Platform' }
 ]
 
 export function DeploymentHub() {
   const [githubUrl, setGithubUrl] = useState('')
   const [provider, setProvider] = useState('')
   const [isDeploying, setIsDeploying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { getToken } = useAuth()
+  const router = useRouter()
 
   const handleDeploy = async () => {
     if (!githubUrl || !provider) {
-      alert('Please fill in all fields')
+      toast.error('Please fill in all fields')
       return
     }
 
     setIsDeploying(true)
+    setError(null)
     try {
-      // Simulate deployment API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      alert('Deployment started! Check the terminal for logs.')
-      setGithubUrl('')
-      setProvider('')
-    } catch (error) {
-      console.error('Deployment error:', error)
-      alert('Failed to start deployment')
+      const token = await getToken();
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+      
+      const response = await fetch(`${backendUrl}/api/deploy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          repoUrl: githubUrl,
+          cloudProvider: provider.toUpperCase(),
+          strategy: 'BALANCED'
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Deployment failed');
+      }
+
+      toast.success('Deployment Handshake Successful!');
+      router.push(`/deployments/${data.deploymentId}`);
+      
+    } catch (err: any) {
+      console.error('Deployment error:', err)
+      setError(err.message)
+      toast.error(err.message || 'Failed to start deployment')
     } finally {
       setIsDeploying(false)
     }
   }
 
   return (
-    <Card className="glass p-8 border border-primary/20 backdrop-blur-md">
+    <Card className="glass p-8 border border-primary/20 backdrop-blur-md h-full">
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-foreground mb-2">Deployment Hub</h2>
@@ -77,13 +103,20 @@ export function DeploymentHub() {
             </Select>
           </div>
 
+          {error && (
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive text-sm">
+              <AlertCircle className="w-4 h-4" />
+              {error}
+            </div>
+          )}
+
           <Button
             onClick={handleDeploy}
             disabled={isDeploying || !githubUrl || !provider}
             className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
           >
             <Rocket className="w-4 h-4" />
-            {isDeploying ? 'Deploying...' : 'Start Deployment'}
+            {isDeploying ? 'Processing Handshake...' : 'Start Deployment'}
           </Button>
         </div>
       </div>

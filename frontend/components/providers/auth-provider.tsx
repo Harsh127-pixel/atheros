@@ -1,65 +1,105 @@
-'use client'
+'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react'
-import { User, AuthContextType, UserRole } from '@/lib/auth-types'
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  signOut, 
+  User as FirebaseUser,
+  getIdTokenResult,
+  getIdToken
+} from 'firebase/auth';
+import { auth, googleProvider } from '@/lib/firebase';
+import { useRouter, usePathname } from 'next/navigation';
+import { AuthContextType, User } from '@/lib/auth-types';
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(null);
+  const [settings, setSettings] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    // Check if user is already logged in (from localStorage or session)
-    const checkAuth = async () => {
-      try {
-        const storedUser = localStorage.getItem('aetheros_user')
-        if (storedUser) {
-          setUser(JSON.parse(storedUser))
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const idTokenResult = await fbUser.getIdTokenResult();
+          const role = (idTokenResult.claims.role as 'USER' | 'ADMIN') || 'USER';
+          
+          const mappedUser: User = {
+            id: fbUser.uid,
+            email: fbUser.email || '',
+            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+            avatar: fbUser.photoURL || undefined,
+            role: role,
+            createdAt: new Date(fbUser.metadata.creationTime || Date.now()),
+          };
 
-    checkAuth()
-  }, [])
+          setUser(mappedUser);
+
+          // Fetch System Settings from Backend
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+          if (backendUrl) {
+            const token = await fbUser.getIdToken();
+            const meRes = await fetch(`${backendUrl}/api/me`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const meData = await meRes.json();
+            setSettings(meData.settings);
+
+            if (meData.settings?.maintenanceMode && role !== 'ADMIN' && pathname !== '/maintenance' && !pathname.startsWith('/admin')) {
+              router.push('/maintenance');
+            }
+          }
+        } catch (e) {
+          console.error('Initial Load Error:', e);
+        }
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [pathname, router]);
 
   const loginWithGoogle = async () => {
+    if (loginLoading) return;
+    setLoginLoading(true);
     try {
-      setIsLoading(true)
-      // Simulate Google login
-      const mockUser: User = {
-        id: 'user_' + Math.random().toString(36).substr(2, 9),
-        email: 'user@example.com',
-        name: 'Test User',
-        role: 'USER',
-        createdAt: new Date(),
+      await signInWithPopup(auth, googleProvider);
+    } catch (error: any) {
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        return;
       }
-      setUser(mockUser)
-      localStorage.setItem('aetheros_user', JSON.stringify(mockUser))
-    } catch (error) {
-      console.error('Error logging in:', error)
-      throw error
+      console.error('Login failed', error);
+      throw error;
     } finally {
-      setIsLoading(false)
+      setLoginLoading(false);
     }
-  }
+  };
 
   const logout = async () => {
     try {
-      setIsLoading(true)
-      setUser(null)
-      localStorage.removeItem('aetheros_user')
+      setIsLoading(true);
+      await signOut(auth);
+      router.push('/login');
     } catch (error) {
-      console.error('Error logging out:', error)
-      throw error
+      console.error('Logout failed', error);
+      throw error;
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
+
+  const getToken = async () => {
+    if (!auth.currentUser) return null;
+    return await getIdToken(auth.currentUser);
+  };
 
   const value: AuthContextType = {
     user,
@@ -67,16 +107,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!user,
     loginWithGoogle,
     logout,
-    isAdmin: user?.role === 'ADMIN' ?? false,
-  }
+    getToken,
+    isAdmin: user?.role === 'ADMIN',
+    settings,
+    loginLoading
+  };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    throw new Error('useAuth must be used within an AuthProvider');
   }
-  return context
+  return context;
 }

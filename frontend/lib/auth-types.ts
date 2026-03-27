@@ -15,5 +15,8 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  getToken: () => Promise<string | null>;
   isAdmin: boolean;
+  settings: any;
+  loginLoading: boolean;
 }

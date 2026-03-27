@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { TerminalLine } from './terminal-line'
-import { Copy, Trash2, Download } from 'lucide-react'
+import { Copy, Trash2, Download, Terminal as TerminalIcon } from 'lucide-react'
 
 interface LogEntry {
   id: string
@@ -13,54 +13,58 @@ interface LogEntry {
   timestamp: string
 }
 
-const MOCK_LOGS = [
-  { type: 'success' as const, content: 'Deployment started' },
-  { type: 'log' as const, content: 'Cloning repository...' },
-  { type: 'log' as const, content: 'Installing dependencies...' },
-  { type: 'log' as const, content: 'npm packages installed successfully' },
-  { type: 'log' as const, content: 'Building application...' },
-  { type: 'log' as const, content: 'Compilation complete' },
-  { type: 'log' as const, content: 'Running tests...' },
-  { type: 'success' as const, content: 'All tests passed' },
-  { type: 'log' as const, content: 'Pushing to cloud provider...' },
-  { type: 'log' as const, content: 'Configuring DNS...' },
-  { type: 'success' as const, content: 'Application deployed to render.com' },
-  { type: 'log' as const, content: 'URL: https://my-app.render.com' },
-  { type: 'success' as const, content: 'Deployment completed in 45s' },
-]
+interface AetherTerminalProps {
+  deploymentId?: string
+  accessToken?: string | null
+}
 
-export function AetherTerminal() {
+export function AetherTerminal({ deploymentId, accessToken }: AetherTerminalProps) {
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [isStreaming, setIsStreaming] = useState(true)
+  const [isStreaming, setIsStreaming] = useState(false)
   const [copied, setCopied] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!isStreaming) return
+    if (!deploymentId || !accessToken) return;
 
-    let currentIndex = 0
-    const interval = setInterval(() => {
-      if (currentIndex < MOCK_LOGS.length) {
-        const log = MOCK_LOGS[currentIndex]
-        const now = new Date()
-        const timestamp = now.toLocaleTimeString()
-        
+    setIsStreaming(true);
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    const eventSource = new EventSource(`${backendUrl}/api/deployments/${deploymentId}/logs?token=${accessToken}`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const now = new Date();
+        const timestamp = now.toLocaleTimeString();
+
+        let type: LogEntry['type'] = 'log';
+        if (data.message.includes('[error]')) type = 'error';
+        if (data.message.includes('[system]')) type = 'log';
+        if (data.message.includes('[brain]')) type = 'success';
+        if (data.message.includes('[scanner]')) type = 'warning';
+
         setLogs(prev => [...prev, {
-          id: `log-${currentIndex}`,
-          content: log.content,
-          type: log.type,
+          id: `log-${Date.now()}-${Math.random()}`,
+          content: data.message,
+          type,
           timestamp,
-        }])
-        
-        currentIndex++
-      } else {
-        setIsStreaming(false)
-        clearInterval(interval)
+        }]);
+      } catch (err) {
+        console.error('Error parsing log:', err);
       }
-    }, 400)
+    };
 
-    return () => clearInterval(interval)
-  }, [isStreaming])
+    eventSource.onerror = (err) => {
+      console.error('EventSource failed:', err);
+      setIsStreaming(false);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+      setIsStreaming(false);
+    };
+  }, [deploymentId, accessToken]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -77,14 +81,13 @@ export function AetherTerminal() {
 
   const handleClear = () => {
     setLogs([])
-    setIsStreaming(true)
   }
 
   const handleDownload = () => {
     const text = logs.map(l => `[${l.timestamp}] ${l.content}`).join('\n')
     const element = document.createElement('a')
     element.setAttribute('href', `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`)
-    element.setAttribute('download', 'deployment-logs.txt')
+    element.setAttribute('download', `deployment-${deploymentId}-logs.txt`)
     element.style.display = 'none'
     document.body.appendChild(element)
     element.click()
@@ -92,11 +95,12 @@ export function AetherTerminal() {
   }
 
   return (
-    <Card className="glass p-0 border border-primary/20 overflow-hidden flex flex-col h-[500px]">
+    <Card className="glass p-0 border border-primary/20 overflow-hidden flex flex-col h-[600px] shadow-2xl shadow-primary/10">
       {/* Header */}
-      <div className="bg-black/50 border-b border-primary/20 px-4 py-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-mono text-primary">aether@terminal:~$</h3>
+      <div className="bg-black/50 border-b border-primary/20 px-4 py-3 flex items-center justify-between backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <TerminalIcon className="w-4 h-4 text-primary animate-pulse" />
+          <h3 className="text-sm font-mono text-primary">aether@terminal:~/deployments/${deploymentId || 'hub'}$</h3>
         </div>
         <div className="flex gap-2">
           <Button
@@ -112,6 +116,7 @@ export function AetherTerminal() {
             variant="ghost"
             size="sm"
             onClick={handleDownload}
+            disabled={logs.length === 0}
             className="text-muted-foreground hover:text-foreground gap-2 h-8"
           >
             <Download className="w-4 h-4" />
@@ -131,11 +136,12 @@ export function AetherTerminal() {
       {/* Logs */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-1 bg-gradient-to-b from-black/80 to-black/60 font-mono text-xs"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-black/90 font-mono text-xs selection:bg-primary/30"
       >
         {logs.length === 0 ? (
-          <div className="text-muted-foreground/50 text-center py-20">
-            Waiting for deployment logs...
+          <div className="text-muted-foreground/30 text-center py-40 border-2 border-dashed border-primary/5 m-4 rounded-xl">
+            <div className="mb-2">AetherOS Brain Handshake Initialized.</div>
+            <div className="text-[10px] animate-pulse">Establishing secure TCP tunnel...</div>
           </div>
         ) : (
           logs.map((log, index) => (
@@ -144,12 +150,15 @@ export function AetherTerminal() {
               content={log.content}
               type={log.type}
               timestamp={log.timestamp}
-              delay={index * 50}
+              delay={0} // No delay for real-time logs
             />
           ))
         )}
-        {isStreaming && logs.length > 0 && (
-          <div className="text-foreground/50 animate-pulse">$</div>
+        {isStreaming && (
+          <div className="text-primary animate-pulse pt-2 flex items-center gap-2">
+            <div className="h-1.5 w-1.5 bg-primary rounded-full"></div>
+            <span>Listening for agent events...</span>
+          </div>
         )}
       </div>
     </Card>
